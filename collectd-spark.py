@@ -217,7 +217,13 @@ class SparkProcessPlugin(object):
             self.get_metrics(resp, 'worker')
 
         self.post_metrics()
+        self.cleanup()
 
+    def cleanup(self):
+        """
+        Clear objects
+        """
+        self.metrics = []
 
     def post_metrics(self):
         """
@@ -325,6 +331,7 @@ class SparkApplicationPlugin(object):
 
         # Send metrics to SignalFx
         self.post_metrics()
+        self.cleanup()
 
     def _get_standalone_apps(self):
         """
@@ -377,6 +384,7 @@ class SparkApplicationPlugin(object):
                 tracking_url = app.get('webui_url')
                 if app_id and app_name and app_user and tracking_url:
                     apps[app_id] = (app_name, app_user, tracking_url)
+                    self.metrics[(app_name, app_user)] = {} 
         collectd.info("########## GOT MESOS FRAMEWORK RESP AND APPS ############")
         return apps
 
@@ -404,39 +412,30 @@ class SparkApplicationPlugin(object):
         """
         for app_id, (app_name, app_user, tracking_url) in apps.iteritems():
             resp = self.spark_agent._urlopen_to_json(tracking_url, \
-                APPS_ENDPOINT, app_id, 'jobs')
+                APPS_ENDPOINT, app_id, 'jobs', status="RUNNING")
             if not resp: continue
 
-            if 'streaming' in self.metrics[(app_name, app_user)]:
-                continue
             dim = {"app_name" : str(app_name), "user" : str(app_user)}
             dim.update(self.global_dimensions)
 
-            self.metrics[(app_name, app_user)]['jobs'] = {}
-            job_metrics = self.metrics[(app_name, app_user)]['jobs']
-
-            job_metrics['total'] = {}
-            job_metrics['total']['spark.num_total_jobs'] = MetricRecord('spark.num_total_jobs', 'gauge', len(resp), dim)
+            job_metrics = self.metrics[(app_name, app_user)]
+            if len(resp):
+                job_metrics['spark.num_total_jobs'] = MetricRecord('spark.num_total_jobs', 
+                                                        'gauge', len(resp), dim)
 
             for job in resp:
                 status = str(job.get("status")).lower()
                 new_dim = {"status" : status}
                 new_dim.update(dim)
-                
-                if status not in job_metrics: job_metrics[status] = {} 
-                
-                updated_metric_type = ''
-                if status == 'running':
-                    updated_metric_type = metrics.GAUGE
 
                 for key, (metric_name, metric_type) in metrics.SPARK_JOB_METRICS.iteritems():
                     if key not in job: continue
                     metric_value = job[key]
                     
-                    mr = job_metrics[status].get(key, MetricRecord(metric_name, 
-                        updated_metric_type if updated_metric_type else metric_type, 0, new_dim))
+                    mr = job_metrics.get(key, MetricRecord(metric_name, 
+                                                    metric_type, 0, new_dim))
                     mr.value += metric_value
-                    job_metrics[status][key] = mr
+                    job_metrics[key] = mr
 
     def _get_stage_metrics(self, apps):
         """
@@ -448,47 +447,34 @@ class SparkApplicationPlugin(object):
         """
         for app_id, (app_name, app_user, tracking_url) in apps.iteritems():
             resp = self.spark_agent._urlopen_to_json(tracking_url, \
-                APPS_ENDPOINT, app_id, 'stages')
+                APPS_ENDPOINT, app_id, 'stages', status="ACTIVE")
             if not resp: continue 
-
-            if 'streaming' in self.metrics[(app_name, app_user)]:
-                continue
 
             dim = {"app_name" : str(app_name), "user" : str(app_user)}
             dim.update(self.global_dimensions)
 
-            self.metrics[(app_name, app_user)]['stages'] = {}
-            stage_metrics = self.metrics[(app_name, app_user)]['stages']
-
-            stage_metrics['total'] = {}
-            stage_metrics['total']['spark.num_total_stages'] = MetricRecord('spark.num_total_stages', 'gauge', len(resp), dim)
-
-            status_count = {}
+            stage_metrics = self.metrics[(app_name, app_user)]
+            if len(resp):
+                stage_metrics['spark.num_total_stages'] = MetricRecord('spark.num_total_stages',
+                                                            'gauge', len(resp), dim)
 
             for stage in resp:
                 status = str(stage.get("status")).lower()
-                status_count[status] = status_count.get(status, 0) + 1
                 new_dim = {"status" : status}
                 new_dim.update(dim)
-                if status not in stage_metrics: stage_metrics[status] = {}
-                
-                updated_metric_type = ''
-                if status == 'active':
-                    updated_metric_type = metrics.GAUGE
-
+ 
                 for key, (metric_name, metric_type) in metrics.SPARK_STAGE_METRICS.iteritems():
                     if key not in stage: continue
                     metric_value = stage[key]
     
-                    mr = stage_metrics[status].get(key, MetricRecord(metric_name, 
-                        updated_metric_type if updated_metric_type else metric_type, 0, new_dim))
+                    mr = stage_metrics.get(key, MetricRecord(metric_name, 
+                                                    metric_type, 0, new_dim))
                     mr.value += metric_value
-                    stage_metrics[status][key] = mr
+                    stage_metrics[key] = mr
 
-            for status in stage_metrics:
-                for key, mr in stage_metrics.iteritems():
-                    if key == "executorRunTime":
-                        mr.value /= status_count[status]
+            for key, mr in stage_metrics.iteritems():
+                if key == "executorRunTime" and len(resp) > 0:
+                    mr.value /= len(resp)
 
 
     def _update_driver_metrics(self, executor, exec_metrics, dim):
@@ -505,10 +491,9 @@ class SparkApplicationPlugin(object):
             if key not in executor: continue
             metric_value = executor[key]
 
-            mr = exec_metrics['driver'].get(key, 
-                MetricRecord(metric_name, metric_type, 0, dim))
+            mr = exec_metrics.get(metric_name, MetricRecord(metric_name, metric_type, 0, dim))
             mr.value += metric_value
-            exec_metrics['driver'][key] = mr
+            exec_metrics[metric_name] = mr
 
     def _update_executor_metrics(self, executor, exec_metrics, dim):
         """
@@ -524,10 +509,9 @@ class SparkApplicationPlugin(object):
             if key not in executor: continue
             metric_value = executor[key]
 
-            mr = exec_metrics['executor'].get(key, 
-                MetricRecord(metric_name, metric_type, 0, dim))
+            mr = exec_metrics.get(metric_name, MetricRecord(metric_name, metric_type, 0, dim))
             mr.value += metric_value
-            exec_metrics['executor'][key] = mr
+            exec_metrics[metric_name] = mr
 
     def _get_executor_metrics(self, apps):
         """
@@ -545,15 +529,11 @@ class SparkApplicationPlugin(object):
             dim = {"app_name" : str(app_name), "user" : str(app_user)}
             dim.update(self.global_dimensions)
 
-            self.metrics[(app_name, app_user)]['executors'] = {}
-            exec_metrics = self.metrics[(app_name, app_user)]['executors']
-            exec_metrics['driver'] = {}
-            exec_metrics['executor'] = {}
+            exec_metrics = self.metrics[(app_name, app_user)]
 
-            if len(resp):
-                mr = MetricRecord('spark.executor.count', 
-                                    'gauge', len(resp), dim)    
-                exec_metrics['executor']['spark.executor.count'] = mr
+            if len(resp):    
+                exec_metrics['spark.executor.count'] = MetricRecord('spark.executor.count', 
+                                                        'gauge', len(resp), dim)
 
             for executor in resp:
                 if executor.get('id') == 'driver':
@@ -580,14 +560,11 @@ class SparkApplicationPlugin(object):
             dim = {"app_name" : str(app_name), "user" : str(app_user)}
             dim.update(self.global_dimensions)
 
-            self.metrics[(app_name, app_user)]['storage'] = {}
-            self.metrics[(app_name, app_user)]['storage']['rdd'] = {}
-
-            rdd_metrics = self.metrics[(app_name, app_user)]['storage']['rdd']
+            rdd_metrics = self.metrics[(app_name, app_user)]
             
             if (len(resp)):
-                mr = MetricRecord('spark.rdd.count', 'counter', len(resp), dim)
-                rdd_metrics['spark.rdd.count'] = mr
+                rdd_metrics['spark.rdd.count'] = MetricRecord('spark.rdd.count', 
+                                                    'counter', len(resp), dim)
 
             for rdd in resp:
                 for key, (metric_name, metric_type) in metrics.SPARK_RDD_METRICS.iteritems():
@@ -618,10 +595,7 @@ class SparkApplicationPlugin(object):
             dim = {"app_name" : str(app_name), "user" : str(app_user)}
             dim.update(self.global_dimensions)
 
-            self.metrics[(app_name, app_user)]['streaming'] = {}
-            self.metrics[(app_name, app_user)]['streaming']['statistics'] = {}
-
-            stream_stat_metrics = self.metrics[(app_name, app_user)]['streaming']['statistics']
+            stream_stat_metrics = self.metrics[(app_name, app_user)]
 
             collectd.info("@@@@@@@@@@@@@@@ GOT STAT RESP @@@@@@@@@@@@@@@@@@")
             for key, (metric_name, metric_type) in metrics.SPARK_STREAMING_METRICS.iteritems():
@@ -633,19 +607,20 @@ class SparkApplicationPlugin(object):
                 mr.value += metric_value
                 stream_stat_metrics[key] = mr
 
+    def cleanup(self):
+        """
+        Clear metrics dictionary
+        """
+        self.metrics = {}
+
     def post_metrics(self):
         """
         Post app metrics to collectd
         """
         for (app_name, user) in self.metrics:
-            endpoint_metrics = self.metrics[(app_name, user)]
-            for endpoint in endpoint_metrics:
-                ext_metrics = endpoint_metrics[endpoint]
-                for ext in ext_metrics:
-                    app_metrics = ext_metrics[ext]
-
-                    for metric_name, mr in app_metrics.iteritems():
-                        self.metric_sink.emit(mr)
+            app_metrics = self.metrics[(app_name, user)]
+            for metric_name, mr in app_metrics.iteritems():
+                self.metric_sink.emit(mr)
 
     def _validate_cluster(self, cluster_mode):
         if cluster_mode == SPARK_YARN_MODE:

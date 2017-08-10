@@ -203,32 +203,32 @@ SPARK_PROCESS_METRICS = {
 }
 
 SPARK_JOB_METRICS = {
-    'numTasks': ('spark.job.num_tasks', COUNTER),
+    'numTasks': ('spark.job.num_tasks', GAUGE),
     'numActiveTasks': ('spark.job.num_active_tasks', GAUGE),
-    'numCompletedTasks': ('spark.job.num_completed_tasks', COUNTER),
-    'numSkippedTasks': ('spark.job.num_skipped_tasks', COUNTER),
-    'numFailedTasks': ('spark.job.num_failed_tasks', COUNTER),
+    'numCompletedTasks': ('spark.job.num_completed_tasks', GAUGE),
+    'numSkippedTasks': ('spark.job.num_skipped_tasks', GAUGE),
+    'numFailedTasks': ('spark.job.num_failed_tasks', GAUGE),
     'numActiveStages': ('spark.job.num_active_stages', GAUGE),
-    'numCompletedStages': ('spark.job.num_completed_stages', COUNTER),
-    'numSkippedStages': ('spark.job.num_skipped_stages', COUNTER),
-    'numFailedStages': ('spark.job.num_failed_stages', COUNTER)
+    'numCompletedStages': ('spark.job.num_completed_stages', GAUGE),
+    'numSkippedStages': ('spark.job.num_skipped_stages', GAUGE),
+    'numFailedStages': ('spark.job.num_failed_stages', GAUGE)
 }
 
 SPARK_STAGE_METRICS = {
     'numActiveTasks': ('spark.stage.num_active_tasks', GAUGE),
-    'numCompleteTasks': ('spark.stage.num_complete_tasks', COUNTER),
-    'numFailedTasks': ('spark.stage.num_failed_tasks', COUNTER),
-    'executorRunTime': ('spark.stage.executor_run_time', COUNTER),
-    'inputBytes': ('spark.stage.input_bytes', COUNTER),
-    'inputRecords': ('spark.stage.input_records', COUNTER),
-    'outputBytes': ('spark.stage.output_bytes', COUNTER),
-    'outputRecords': ('spark.stage.output_records', COUNTER),
-    'shuffleReadBytes': ('spark.stage.shuffle_read_bytes', COUNTER),
-    'shuffleReadRecords': ('spark.stage.shuffle_read_records', COUNTER),
-    'shuffleWriteBytes': ('spark.stage.shuffle_write_bytes', COUNTER),
-    'shuffleWriteRecords': ('spark.stage.shuffle_write_records', COUNTER),
-    'memoryBytesSpilled': ('spark.stage.memory_bytes_spilled', COUNTER),
-    'diskBytesSpilled': ('spark.stage.disk_bytes_spilled', COUNTER)
+    'numCompleteTasks': ('spark.stage.num_complete_tasks', GAUGE),
+    'numFailedTasks': ('spark.stage.num_failed_tasks', GAUGE),
+    'executorRunTime': ('spark.stage.executor_run_time', GAUGE),
+    'inputBytes': ('spark.stage.input_bytes', GAUGE),
+    'inputRecords': ('spark.stage.input_records', GAUGE),
+    'outputBytes': ('spark.stage.output_bytes', GAUGE),
+    'outputRecords': ('spark.stage.output_records', GAUGE),
+    'shuffleReadBytes': ('spark.stage.shuffle_read_bytes', GAUGE),
+    'shuffleReadRecords': ('spark.stage.shuffle_read_records', GAUGE),
+    'shuffleWriteBytes': ('spark.stage.shuffle_write_bytes', GAUGE),
+    'shuffleWriteRecords': ('spark.stage.shuffle_write_records', GAUGE),
+    'memoryBytesSpilled': ('spark.stage.memory_bytes_spilled', GAUGE),
+    'diskBytesSpilled': ('spark.stage.disk_bytes_spilled', GAUGE)
 }
 
 SPARK_DRIVER_METRICS = {
