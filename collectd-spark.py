@@ -343,8 +343,10 @@ class SparkApplicationPlugin(object):
         """
         resp = self.spark_agent._urlopen_to_json(self.master, STANDALONE_STATE_PATH)
         apps = {}
+        active_apps = {}
 
-        active_apps = resp['activeapps']
+        if 'activeapps' in resp:
+            active_apps = resp['activeapps']
         
         for app in active_apps:
             app_id = app.get('id')
@@ -374,17 +376,20 @@ class SparkApplicationPlugin(object):
         """
         resp = self.spark_agent._urlopen_to_json(self.master, MESOS_MASTER_APP_PATH)
         apps = {}
+        frameworks = {}
+        if 'frameworks' in resp:
+            frameworks = resp['frameworks']
 
-        if "frameworks" in resp:
-            for app in resp["frameworks"]:
-                app_id = app.get('id')
-                app_name = app.get('name')
-                app_user = app.get('user')
+        for app in frameworks:
+            app_id = app.get('id')
+            app_name = app.get('name')
+            app_user = app.get('user')
 
-                tracking_url = app.get('webui_url')
-                if app_id and app_name and app_user and tracking_url:
-                    apps[app_id] = (app_name, app_user, tracking_url)
-                    self.metrics[(app_name, app_user)] = {} 
+            tracking_url = app.get('webui_url')
+            if app_id and app_name and app_user and tracking_url:
+                apps[app_id] = (app_name, app_user, tracking_url)
+                self.metrics[(app_name, app_user)] = {} 
+
         collectd.info("########## GOT MESOS FRAMEWORK RESP AND APPS ############")
         return apps
 
