@@ -8,7 +8,7 @@ from urlparse import urljoin
 
 PLUGIN_NAME = "Apache Spark"
 APPS = 'Applications'
-DEFAULT_INTERVAL = 30 # Currently set to provide more compute time and reduce load  
+DEFAULT_INTERVAL = 10 
 
 # Metric sink
 METRIC_ADDRESS = "MetricsURL"
@@ -102,6 +102,7 @@ class SparkAgent(object):
         except ValueError, e:
             collectd.info("Error parsing JSON from API call (%s) %s/%s" % 
                                 (e, url, path))
+            collectd.info("####### Could not make request for url %s #######" % url)
             return []
 
     def rest_request(self, url, path, *args, **kwargs):
@@ -123,6 +124,7 @@ class SparkAgent(object):
             return resp
         except (urllib2.HTTPError, urllib2.URLError) as e:
             collectd.info("Unable to make request at (%s) %s" % (e, url))
+            collectd.info("####### Could not make request for url %s #######" % url)
             return None
 
 class SparkProcessPlugin(object):
@@ -179,7 +181,7 @@ class SparkProcessPlugin(object):
         dim = {"spark_process" : process}
         dim.update(self.global_dimensions)
 
-        metrics = []
+        metric_records = []
 
         for key in metrics.SPARK_PROCESS_METRICS:
             metric_type_cat = metrics.SPARK_PROCESS_METRICS[key]['metric_type_category']
@@ -193,8 +195,8 @@ class SparkProcessPlugin(object):
             metric_key = metrics.SPARK_PROCESS_METRICS[key]['key']
             metric_value = data[key][metric_key]
 
-            metrics.append(MetricRecord(metric_name, metric_type, metric_value, dim))
-        return metrics 
+            metric_records.append(MetricRecord(metric_name, metric_type, metric_value, dim))
+        return metric_records
 
     def read(self):
         """
@@ -346,7 +348,6 @@ class SparkApplicationPlugin(object):
             app_name = app.get('name')
             app_user = app.get('user')
 
-            collectd.info(app_name)
             resp = self.spark_agent.rest_request(self.master, STANDALONE_APP_PATH, appId=app_id)
             dom = BeautifulSoup(resp.read(), 'html.parser')
             app_detail_ui_links = dom.find_all('a', string='Application Detail UI')
@@ -597,7 +598,7 @@ class SparkApplicationPlugin(object):
         host, port = master.rsplit(":", 1)
         if host and port:
             try:
-                port = int(host_port[1])
+                port = int(port)
             except:
                 return False
             return True
