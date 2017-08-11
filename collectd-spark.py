@@ -1,4 +1,3 @@
-#import requests
 import collectd
 import metrics
 import urllib2
@@ -90,12 +89,12 @@ class SparkAgent(object):
     Agent for facilitating REST calls 
     """
 
-    def _urlopen_to_json(self, url, path, *args, **kwargs):
+    def request_metrics(self, url, path, *args, **kwargs):
         """
         Makes REST call and converts response to JSON
         """
-        resp = self._url_open(url, path, *args, **kwargs)
-        if (resp == None):
+        resp = self.rest_request(url, path, *args, **kwargs)
+        if not resp:
             return [] 
 
         try:
@@ -105,7 +104,7 @@ class SparkAgent(object):
                                 (e, url, path))
             return []
 
-    def _url_open(self, url, path, *args, **kwargs):
+    def rest_request(self, url, path, *args, **kwargs):
         """
         Makes REST call to Spark API endpoint 
         """
@@ -119,14 +118,11 @@ class SparkAgent(object):
             url = urljoin(url, '?' + query)
 
         try:
-            collectd.info("********* URL in url_open ********")
-            collectd.info(url)
             req = urllib2.Request(url)
             resp = urllib2.urlopen(req)
-            #resp = requests.get(url)
             return resp
-        except:
-            collectd.info("Unable to make request at %s" % url)
+        except (urllib2.HTTPError, urllib2.URLError) as e:
+            collectd.info("Unable to make request at (%s) %s" % (e, url))
             return None
 
 class SparkProcessPlugin(object):
@@ -138,7 +134,6 @@ class SparkProcessPlugin(object):
         self.global_dimensions = {}
         self.spark_agent = SparkAgent()
         self.metric_sink = MetricSink()
-        self.metrics = []
 
     def configure(self, config_map):
         """
@@ -147,10 +142,7 @@ class SparkProcessPlugin(object):
         Args:
         config_map (dict): mapping of config name to value
         """
-
-        collectd.info("#################")
         collectd.info("Configuring Spark Process Plugin ...")
-        collectd.info("#################")
 
         if 'MasterPort' not in config_map and 'WorkerPort' not in config_map:
             raise ValueError("No port provided for metrics url - \
@@ -169,9 +161,7 @@ class SparkProcessPlugin(object):
             elif key == 'Dimensions' or key == 'Dimension':
                 self.global_dimensions.update(self._dimensions_str_to_dict(value))
 
-        collectd.info("#################")
         collectd.info("Successfully configured Spark Process Plugin ...")
-        collectd.info("#################")
 
     def get_metrics(self, resp, process):
         """
@@ -180,13 +170,17 @@ class SparkProcessPlugin(object):
         Args:
         resp (dict): response from API call, mapping of metric name to value 
         process (str): String representing spark process - either 'master' or 'worker'
+
+        Returns:
+        list of MetricRecord objects to be sent to SignalFx
         """
         if not resp: return
 
         dim = {"spark_process" : process}
         dim.update(self.global_dimensions)
-        collectd.info("############# GETTING METRICS ############")
-        collectd.info(dim['spark_process'])
+
+        metrics = []
+
         for key in metrics.SPARK_PROCESS_METRICS:
             metric_type_cat = metrics.SPARK_PROCESS_METRICS[key]['metric_type_category']
             data = resp[metric_type_cat]
@@ -199,7 +193,8 @@ class SparkProcessPlugin(object):
             metric_key = metrics.SPARK_PROCESS_METRICS[key]['key']
             metric_value = data[key][metric_key]
 
-            self.metrics.append(MetricRecord(metric_name, metric_type, metric_value, dim))
+            metrics.append(MetricRecord(metric_name, metric_type, metric_value, dim))
+        return metrics 
 
     def read(self):
         """
@@ -208,29 +203,36 @@ class SparkProcessPlugin(object):
         """
         if self.master_port:
             master = self.metric_address+":"+self.master_port
-            resp = self.spark_agent._urlopen_to_json(master, MASTER_PATH)
-            self.get_metrics(resp, 'master')    
+            master_resp = self.spark_agent.request_metrics(master, MASTER_PATH)
+            master_metrics = self.get_metrics(master_resp, 'master')    
+            self.post_metrics(master_metrics)
 
         if self.worker_port:
             worker = self.metric_address+":"+self.worker_port
-            resp = self.spark_agent._urlopen_to_json(worker, WORKER_PATH)
-            self.get_metrics(resp, 'worker')
+            worker_resp = self.spark_agent.request_metrics(worker, WORKER_PATH)
+            worker_metrics = self.get_metrics(worker_resp, 'worker')
+            self.post_metrics(worker_metrics)
 
-        self.post_metrics()
-        self.cleanup()
-
-    def cleanup(self):
-        """
-        Clear objects
-        """
-        self.metrics = []
-
-    def post_metrics(self):
+    def post_metrics(self, metrics):
         """
         Post master and worker metrics 
         """
-        for metric in self.metrics:
+        for metric in metrics:
             self.metric_sink.emit(metric)
+
+    def _validate_kv(self, kv):
+        """
+        check for malformed data on split
+
+        Args:
+        kv (list): List of key value pair 
+
+        Returns:
+        bool: True if list contained expected pair and False otherwise
+        """
+        if len(kv) == 2 and '' not in kv:
+            return True
+        return False
 
     def _dimensions_str_to_dict(self, dimensions_str):
         """
@@ -272,10 +274,7 @@ class SparkApplicationPlugin(object):
         Args:
         config_map (dict): mapping of config name to value
         """
-
-        collectd.info("#################")
         collectd.info("Configuring Spark Application Plugin ...")
-        collectd.info("#################")
 
         required_keys = {'Cluster', 'Master'}
 
@@ -301,9 +300,7 @@ class SparkApplicationPlugin(object):
                 self.global_dimensions.update(
                     self._dimensions_str_to_dict(value))
 
-        collectd.info("#################")
         collectd.info("Successfully configured Spark Application Plugin")
-        collectd.info("#################")
 
     def read(self):
         """
@@ -325,10 +322,6 @@ class SparkApplicationPlugin(object):
         # Get the executor metrics
         self._get_executor_metrics(apps)
 
-        # Get the rdd metrics
-        # Commented out since no way to currently test this endpoint - getting empty [] back 
-        # self._get_rdd_metrics(apps)
-
         # Send metrics to SignalFx
         self.post_metrics()
         self.cleanup()
@@ -341,7 +334,7 @@ class SparkApplicationPlugin(object):
         application. The driver URL is the API endpoint required to 
         retrieve any application level metrics
         """
-        resp = self.spark_agent._urlopen_to_json(self.master, STANDALONE_STATE_PATH)
+        resp = self.spark_agent.request_metrics(self.master, STANDALONE_STATE_PATH)
         apps = {}
         active_apps = {}
 
@@ -354,7 +347,7 @@ class SparkApplicationPlugin(object):
             app_user = app.get('user')
 
             collectd.info(app_name)
-            resp = self.spark_agent._url_open(self.master, STANDALONE_APP_PATH, appId=app_id)
+            resp = self.spark_agent.rest_request(self.master, STANDALONE_APP_PATH, appId=app_id)
             dom = BeautifulSoup(resp.read(), 'html.parser')
             app_detail_ui_links = dom.find_all('a', string='Application Detail UI')
             if not app_detail_ui_links:
@@ -362,9 +355,7 @@ class SparkApplicationPlugin(object):
 
             if app_detail_ui_links and len(app_detail_ui_links) == 1:
                 tracking_url = app_detail_ui_links[0].attrs['href']
-                collectd.info("*#*#*#**#*# GOT DRIVER URL *#*#*#*#**#")
             else:
-                collectd.info("********* COULD NOT get driver url ***********")
                 continue
             apps[app_id] = (app_name, app_user, tracking_url)
             self.metrics[(app_name, app_user)] = {}
@@ -374,7 +365,7 @@ class SparkApplicationPlugin(object):
         """
         Retrieve all applications corresponding to Spark mesos cluster
         """
-        resp = self.spark_agent._urlopen_to_json(self.master, MESOS_MASTER_APP_PATH)
+        resp = self.spark_agent.request_metrics(self.master, MESOS_MASTER_APP_PATH)
         apps = {}
         frameworks = {}
         if 'frameworks' in resp:
@@ -389,8 +380,6 @@ class SparkApplicationPlugin(object):
             if app_id and app_name and app_user and tracking_url:
                 apps[app_id] = (app_name, app_user, tracking_url)
                 self.metrics[(app_name, app_user)] = {} 
-
-        collectd.info("########## GOT MESOS FRAMEWORK RESP AND APPS ############")
         return apps
 
     def _get_running_apps(self):
@@ -401,11 +390,37 @@ class SparkApplicationPlugin(object):
             collectd.info("Cluster mode not defined")
             return []
         if self.cluster_mode == SPARK_STANDALONE_MODE:
-            collectd.info("###### CLUSTER STANDALONE DETECTED #######")
             return self._get_standalone_apps()
         elif self.cluster_mode == SPARK_MESOS_MODE:
-            collectd.info("###### CLUSTER MESOS DETECTED #######")
             return self._get_mesos_apps()
+
+    def _get_streaming_metrics(self, apps):
+        """
+        Get streaming metrics corresponding to a streaming application
+
+        Args:
+        apps (dict): Mapping of application id to app name, user, 
+                     and url endpoint for API call
+        """
+        for app_id, (app_name, app_user, tracking_url) in apps.iteritems():
+            resp = self.spark_agent.request_metrics(tracking_url, \
+                APPS_ENDPOINT, app_id, 'streaming/statistics')
+            if not resp: 
+                continue 
+
+            dim = {"app_name" : str(app_name), "user" : str(app_user)}
+            dim.update(self.global_dimensions)
+
+            stream_stat_metrics = self.metrics[(app_name, app_user)]
+
+            for key, (metric_name, metric_type) in metrics.SPARK_STREAMING_METRICS.iteritems():
+                if key not in resp: continue
+                metric_value = resp[key]
+
+                mr = stream_stat_metrics.get(key,
+                    MetricRecord(metric_name, metric_type, 0, dim))
+                mr.value += metric_value
+                stream_stat_metrics[key] = mr
 
     def _get_job_metrics(self, apps):
         """
@@ -416,7 +431,7 @@ class SparkApplicationPlugin(object):
                      and url endpoint for API call
         """
         for app_id, (app_name, app_user, tracking_url) in apps.iteritems():
-            resp = self.spark_agent._urlopen_to_json(tracking_url, \
+            resp = self.spark_agent.request_metrics(tracking_url, \
                 APPS_ENDPOINT, app_id, 'jobs', status="RUNNING")
             if not resp: continue
 
@@ -451,7 +466,7 @@ class SparkApplicationPlugin(object):
                      and url endpoint for API call
         """
         for app_id, (app_name, app_user, tracking_url) in apps.iteritems():
-            resp = self.spark_agent._urlopen_to_json(tracking_url, \
+            resp = self.spark_agent.request_metrics(tracking_url, \
                 APPS_ENDPOINT, app_id, 'stages', status="ACTIVE")
             if not resp: continue 
 
@@ -527,7 +542,7 @@ class SparkApplicationPlugin(object):
                      and url endpoint for API call
         """
         for app_id, (app_name, app_user, tracking_url) in apps.iteritems():
-            resp = self.spark_agent._urlopen_to_json(tracking_url, \
+            resp = self.spark_agent.request_metrics(tracking_url, \
                 APPS_ENDPOINT, app_id, 'executors')
             if not resp: continue 
 
@@ -545,72 +560,6 @@ class SparkApplicationPlugin(object):
                     self._update_driver_metrics(executor, exec_metrics, dim)
                 else:
                     self._update_executor_metrics(executor, exec_metrics, dim)
-
-    """ Commented out as dead code:
-        can't formally test this method. 
-
-    def _get_rdd_metrics(self, apps):
-        '''
-        Get RDD metrics corresponding to a running application
-
-        Args:
-        apps (dict): Mapping of application id to app name, user, 
-                     and url endpoint for API call
-        '''
-        for app_id, (app_name, app_user, tracking_url) in apps.iteritems():
-            resp = self.spark_agent._urlopen_to_json(tracking_url, \
-                APPS_ENDPOINT, app_id, 'storage/rdd')
-            if not resp: continue 
-
-            dim = {"app_name" : str(app_name), "user" : str(app_user)}
-            dim.update(self.global_dimensions)
-
-            rdd_metrics = self.metrics[(app_name, app_user)]
-            
-            if (len(resp)):
-                rdd_metrics['spark.rdd.count'] = MetricRecord('spark.rdd.count', 
-                                                    'counter', len(resp), dim)
-
-            for rdd in resp:
-                for key, (metric_name, metric_type) in metrics.SPARK_RDD_METRICS.iteritems():
-                    if key not in rdd: continue
-                    metric_value = rdd[key]
-    
-                    mr = rdd_metrics.get(key, 
-                        MetricRecord(metric_name, metric_type, 0, dim))
-                    mr.value += metric_value
-                    rdd_metrics[key] = mr
-    """
-
-    def _get_streaming_metrics(self, apps):
-        """
-        Get streaming metrics corresponding to a streaming application
-
-        Args:
-        apps (dict): Mapping of application id to app name, user, 
-                     and url endpoint for API call
-        """
-        for app_id, (app_name, app_user, tracking_url) in apps.iteritems():
-            resp = self.spark_agent._urlopen_to_json(tracking_url, \
-                APPS_ENDPOINT, app_id, 'streaming/statistics')
-            if not resp: 
-                collectd.info("********* COULD NOT GET RESP FROM STREAMING APP *************")
-                continue 
-
-            dim = {"app_name" : str(app_name), "user" : str(app_user)}
-            dim.update(self.global_dimensions)
-
-            stream_stat_metrics = self.metrics[(app_name, app_user)]
-
-            collectd.info("@@@@@@@@@@@@@@@ GOT STAT RESP @@@@@@@@@@@@@@@@@@")
-            for key, (metric_name, metric_type) in metrics.SPARK_STREAMING_METRICS.iteritems():
-                if key not in resp: continue
-                metric_value = resp[key]
-
-                mr = stream_stat_metrics.get(key,
-                    MetricRecord(metric_name, metric_type, 0, dim))
-                mr.value += metric_value
-                stream_stat_metrics[key] = mr
 
     def cleanup(self):
         """
@@ -633,7 +582,8 @@ class SparkApplicationPlugin(object):
         return cluster_mode == SPARK_STANDALONE_MODE or \
             cluster_mode == SPARK_MESOS_MODE or cluster_mode == SPARK_YARN_MODE
 
-    def _validate_master(self, master):
+    @classmethod
+    def _validate_master(cls, master):
         """
         validate form of master url provided from config file
 
@@ -644,13 +594,12 @@ class SparkApplicationPlugin(object):
         bool: True if master URL contains host and port as expected 
               and False otherwise 
         """
-        host_port = master.rsplit(":", 1)
-        if self._validate_kv(host_port):
+        host, port = master.rsplit(":", 1)
+        if host and port:
             try:
                 port = int(host_port[1])
             except:
                 return False
-
             return True
         else:
             return False
@@ -703,15 +652,9 @@ class SparkPluginManager(object):
         collectd.info("Configuring plugins via Spark Plugin Manager")
         
         config_map = dict([(c.key, c.values[0]) for c in conf.children])
-
-        collectd.info("#################")
-        for key, value in config_map.iteritems():
-            
-            collectd.info(key+" : "+str(value))
         if METRIC_ADDRESS in config_map:
             self.sp_plugin = SparkProcessPlugin()
             self.sp_plugin.configure(config_map)
-        collectd.info("#################")
 
         if APPS not in config_map: return
         if config_map[APPS] == 'False': 
