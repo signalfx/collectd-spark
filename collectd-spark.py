@@ -29,6 +29,9 @@ STANDALONE_STATE_PATH = '/json/'
 STANDALONE_APP_PATH = '/app/'
 MESOS_MASTER_APP_PATH = '/frameworks'
 
+# Error match
+HTTP_404_ERROR = "Error 404"
+
 class MetricRecord(object):
     """
     Struct for all information needed to emit a single collectd metric.
@@ -102,7 +105,6 @@ class SparkAgent(object):
         except ValueError, e:
             collectd.info("Error parsing JSON from API call (%s) %s/%s" % 
                                 (e, url, path))
-            collectd.info("####### Could not make request for url %s #######" % url)
             return []
 
     def rest_request(self, url, path, *args, **kwargs):
@@ -123,8 +125,10 @@ class SparkAgent(object):
             resp = urllib2.urlopen(req)
             return resp
         except (urllib2.HTTPError, urllib2.URLError) as e:
-            collectd.info("Unable to make request at (%s) %s" % (e, url))
-            collectd.info("####### Could not make request for url %s #######" % url)
+            if HTTP_404_ERROR not in str(e):
+                collectd.info("Unable to make request at (%s) %s" % (e, url))
+            return None
+        except (IOError, httplib.HTTPException):
             return None
 
 class SparkProcessPlugin(object):
