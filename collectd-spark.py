@@ -250,11 +250,10 @@ class SparkProcessPlugin(object):
         for dimension in dimensions_list:
             kv = dimension.strip().split('=')
             if self._validate_kv(kv):
-                dimensions[key_val_split[0]] = key_val_split[1]
+                dimensions[kv[0]] = kv[1]
             else:
                 collectd.info("Could not validate key-val in \
                     dimensions from configuration file.")
-        
         return dimensions
 
 
@@ -633,11 +632,10 @@ class SparkApplicationPlugin(object):
         for dimension in dimensions_list:
             kv = dimension.strip().split('=')
             if self._validate_kv(kv):
-                dimensions[key_val_split[0]] = key_val_split[1]
+                dimensions[kv[0]] = kv[1]
             else:
                 collectd.info("Could not validate key-val in dimensions \
                  from configuration file.")
-        
         return dimensions
 
 class SparkPluginManager(object):
