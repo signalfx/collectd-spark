@@ -8,14 +8,14 @@ from urlparse import urljoin
 
 PLUGIN_NAME = "Apache Spark"
 APPS = 'Applications'
-DEFAULT_INTERVAL = 10 
+DEFAULT_INTERVAL = 10
 
 # Metric sink
 METRIC_ADDRESS = "MetricsURL"
 MASTER_PATH = "metrics/master/json"
 WORKER_PATH = "metrics/json"
 
-# Spark cluster modes 
+# Spark cluster modes
 SPARK_STANDALONE_MODE = 'Standalone'
 SPARK_MESOS_MODE = 'Mesos'
 SPARK_YARN_MODE = 'Yarn'
@@ -32,6 +32,7 @@ MESOS_MASTER_APP_PATH = '/frameworks'
 # Error match
 HTTP_404_ERROR = "Error 404"
 
+
 class MetricRecord(object):
     """
     Struct for all information needed to emit a single collectd metric.
@@ -41,7 +42,8 @@ class MetricRecord(object):
 
     TO_STRING_FORMAT = '[name={},type={},value={},dimensions={},timestamp={}]'
 
-    def __init__(self, metric_name, metric_type, value, dimensions=None, timestamp=None):
+    def __init__(self, metric_name, metric_type, value,
+                 dimensions=None, timestamp=None):
         self.name = metric_name
         self.type = metric_type
         self.value = value
@@ -49,8 +51,13 @@ class MetricRecord(object):
         # self.timestamp = timestamp or time.time()
 
     def to_string(self):
-        return MetricRecord.TO_STRING_FORMAT.format(self.name, self.type, self.value,\
-            self.instance_id, self.dimensions, self.timestamp)
+        return MetricRecord.TO_STRING_FORMAT.format(self.name,
+                                                    self.type,
+                                                    self.value,
+                                                    self.instance_id,
+                                                    self.dimensions,
+                                                    self.timestamp)
+
 
 class MetricSink(object):
     """
@@ -64,13 +71,12 @@ class MetricSink(object):
         and dispatch.
         """
         emit_value = collectd.Values()
-
-        #emit_value.time = metric_record.timestamp
         emit_value.plugin = PLUGIN_NAME
         emit_value.values = [metric_record.value]
         emit_value.type = metric_record.type
         emit_value.type_instance = metric_record.name
-        emit_value.plugin_instance = '[{0}]'.format(self._format_dimensions(metric_record.dimensions))
+        emit_value.plugin_instance = '[{0}]'.format(
+            self._format_dimensions(metric_record.dimensions))
 
         # With some versions of CollectD, a dummy metadata map must to be added
         # to each value for it to be correctly serialized to JSON by the
@@ -82,14 +88,17 @@ class MetricSink(object):
 
     def _format_dimensions(self, dimensions):
         """
-        Formats a dictionary of key/value pairs as a comma-delimited list of key=value tokens.
+        Formats a dictionary of key/value pairs
+        as a comma-delimited list of key=value tokens.
         Taken from docker-collectd-plugin.
         """
-        return ','.join(['='.join((key.replace('.', '_'), value)) for key, value in dimensions.iteritems()])
+        return ','.join(['='.join((key.replace('.', '_'), value))
+                        for key, value in dimensions.iteritems()])
+
 
 class SparkAgent(object):
     """
-    Agent for facilitating REST calls 
+    Agent for facilitating REST calls
     """
 
     def request_metrics(self, url, path, *args, **kwargs):
@@ -98,18 +107,18 @@ class SparkAgent(object):
         """
         resp = self.rest_request(url, path, *args, **kwargs)
         if not resp:
-            return [] 
+            return []
 
         try:
             return json.load(resp)
         except ValueError, e:
-            collectd.info("Error parsing JSON from API call (%s) %s/%s" % 
-                                (e, url, path))
+            collectd.info("Error parsing JSON from API call (%s) %s/%s" %
+                          (e, url, path))
             return []
 
     def rest_request(self, url, path, *args, **kwargs):
         """
-        Makes REST call to Spark API endpoint 
+        Makes REST call to Spark API endpoint
         """
         url = url.rstrip('/')+"/"+path.lstrip('/')
         if args:
@@ -117,7 +126,8 @@ class SparkAgent(object):
                 url = url.rstrip('/')+"/"+arg.lstrip('/')
 
         if kwargs:
-            query = '&'.join(['{0}={1}'.format(key, value) for key, value in kwargs.iteritems()])
+            query = '&'.join(['{0}={1}'.format(key, value)
+                             for key, value in kwargs.iteritems()])
             url = urljoin(url, '?' + query)
 
         try:
@@ -128,12 +138,13 @@ class SparkAgent(object):
             if HTTP_404_ERROR not in str(e):
                 collectd.info("Unable to make request at (%s) %s" % (e, url))
             return None
-        except (IOError, httplib.HTTPException):
+        except:
             return None
+
 
 class SparkProcessPlugin(object):
     """
-    Spark process plugin parent for posting metrics 
+    Spark process plugin parent for posting metrics
     """
 
     def __init__(self):
@@ -158,37 +169,41 @@ class SparkProcessPlugin(object):
         for key, value in config_map.iteritems():
             if key == METRIC_ADDRESS:
                 self.metric_address = value
-            elif key == 'MasterPort': 
+            elif key == 'MasterPort':
                 collectd.info("MasterPort detected")
                 self.master_port = str(int(value))
             elif key == 'WorkerPort':
                 collectd.info("WorkerPort detected")
                 self.worker_port = str(int(value))
             elif key == 'Dimensions' or key == 'Dimension':
-                self.global_dimensions.update(self._dimensions_str_to_dict(value))
+                self.global_dimensions.update(
+                    self._dimensions_str_to_dict(value))
 
         collectd.info("Successfully configured Spark Process Plugin ...")
 
     def get_metrics(self, resp, process):
         """
-        Helper method to parse response json 
+        Helper method to parse response json
 
         Args:
-        resp (dict): response from API call, mapping of metric name to value 
-        process (str): String representing spark process - either 'master' or 'worker'
+        resp (dict): response from API call, mapping of metric name to value
+        process (str): String representing spark process
+                        - either 'master' or 'worker'
 
         Returns:
         list of MetricRecord objects to be sent to SignalFx
         """
-        if not resp: return
+        if not resp:
+            return
 
-        dim = {"spark_process" : process}
+        dim = {"spark_process": process}
         dim.update(self.global_dimensions)
 
         metric_records = []
 
         for key in metrics.SPARK_PROCESS_METRICS:
-            metric_type_cat = metrics.SPARK_PROCESS_METRICS[key]['metric_type_category']
+            metric_type_cat = metrics.SPARK_PROCESS_METRICS[
+                            key]['metric_type_category']
             data = resp[metric_type_cat]
             if key not in data:
                 continue
@@ -199,18 +214,20 @@ class SparkProcessPlugin(object):
             metric_key = metrics.SPARK_PROCESS_METRICS[key]['key']
             metric_value = data[key][metric_key]
 
-            metric_records.append(MetricRecord(metric_name, metric_type, metric_value, dim))
+            metric_records.append(MetricRecord(metric_name,
+                                               metric_type, metric_value, dim))
         return metric_records
 
     def read(self):
         """
-        Makes API calls for cluster level metrics related to master and worker nodes
+        Makes API calls for cluster level metrics
+        related to master and worker nodes
         and posts them to SignalFx
         """
         if self.master_port:
             master = self.metric_address+":"+self.master_port
             master_resp = self.spark_agent.request_metrics(master, MASTER_PATH)
-            master_metrics = self.get_metrics(master_resp, 'master')    
+            master_metrics = self.get_metrics(master_resp, 'master')
             self.post_metrics(master_metrics)
 
         if self.worker_port:
@@ -221,7 +238,7 @@ class SparkProcessPlugin(object):
 
     def post_metrics(self, metrics):
         """
-        Post master and worker metrics 
+        Post master and worker metrics
         """
         for metric in metrics:
             self.metric_sink.emit(metric)
@@ -231,7 +248,7 @@ class SparkProcessPlugin(object):
         check for malformed data on split
 
         Args:
-        kv (list): List of key value pair 
+        kv (list): List of key value pair
 
         Returns:
         bool: True if list contained expected pair and False otherwise
@@ -263,7 +280,7 @@ class SparkProcessPlugin(object):
 
 class SparkApplicationPlugin(object):
     """
-    Class encapsulating collectd callback functions 
+    Class encapsulating collectd callback functions
     """
 
     def __init__(self):
@@ -289,18 +306,18 @@ class SparkApplicationPlugin(object):
 
         for key, value in config_map.iteritems():
             if key == 'Cluster':
-                if not self._validate_cluster(value):   
-                    raise ValueError("Cluster value not: %s, %s, or %s", \
-                        (SPARK_STANDALONE_MODE, SPARK_MESOS_MODE, 
-                            SPARK_YARN_MODE))
+                if not self._validate_cluster(value):
+                    raise ValueError("Cluster value not: %s, %s, or %s",
+                                     (SPARK_STANDALONE_MODE, SPARK_MESOS_MODE,
+                                      SPARK_YARN_MODE))
                 self.cluster_mode = value
                 self.global_dimensions['cluster'] = self.cluster_mode
-            
+
             elif key == 'Master':
                 if not self._validate_master(value):
                     raise ValueError("Master not configured as (host:port)")
                 self.master = value
-            
+
             elif key == 'Dimensions' or key == 'Dimension':
                 self.global_dimensions.update(
                     self._dimensions_str_to_dict(value))
@@ -309,13 +326,13 @@ class SparkApplicationPlugin(object):
 
     def read(self):
         """
-        Collect metrics from Spark API endpoints and send to SignalFx 
+        Collect metrics from Spark API endpoints and send to SignalFx
         """
-        
-        # Get all active apps in cluster 
+
+        # Get all active apps in cluster
         apps = self._get_running_apps()
-        
-        # Get streaming metrics 
+
+        # Get streaming metrics
         self._get_streaming_metrics(apps)
 
         # Get the job metrics
@@ -333,29 +350,34 @@ class SparkApplicationPlugin(object):
 
     def _get_standalone_apps(self):
         """
-        Retrieve active applications for Spark standalone cluster 
+        Retrieve active applications for Spark standalone cluster
 
         Uses BeautifulSoup module to find driver URL mapped to the specific
-        application. The driver URL is the API endpoint required to 
+        application. The driver URL is the API endpoint required to
         retrieve any application level metrics
         """
-        resp = self.spark_agent.request_metrics(self.master, STANDALONE_STATE_PATH)
+        resp = self.spark_agent.request_metrics(self.master,
+                                                STANDALONE_STATE_PATH)
         apps = {}
         active_apps = {}
 
         if 'activeapps' in resp:
             active_apps = resp['activeapps']
-        
+
         for app in active_apps:
             app_id = app.get('id')
             app_name = app.get('name')
             app_user = app.get('user')
 
-            resp = self.spark_agent.rest_request(self.master, STANDALONE_APP_PATH, appId=app_id)
+            resp = self.spark_agent.rest_request(self.master,
+                                                 STANDALONE_APP_PATH,
+                                                 appId=app_id)
             dom = BeautifulSoup(resp.read(), 'html.parser')
-            app_detail_ui_links = dom.find_all('a', string='Application Detail UI')
+            app_detail_ui_links = dom.find_all('a',
+                                               string='Application Detail UI')
             if not app_detail_ui_links:
-                app_detail_ui_links = dom.find_all('a', text='Application Detail UI')
+                app_detail_ui_links = dom.find_all(
+                    'a', text='Application Detail UI')
 
             if app_detail_ui_links and len(app_detail_ui_links) == 1:
                 tracking_url = app_detail_ui_links[0].attrs['href']
@@ -369,7 +391,8 @@ class SparkApplicationPlugin(object):
         """
         Retrieve all applications corresponding to Spark mesos cluster
         """
-        resp = self.spark_agent.request_metrics(self.master, MESOS_MASTER_APP_PATH)
+        resp = self.spark_agent.request_metrics(self.master,
+                                                MESOS_MASTER_APP_PATH)
         apps = {}
         frameworks = {}
         if 'frameworks' in resp:
@@ -383,12 +406,12 @@ class SparkApplicationPlugin(object):
             tracking_url = app.get('webui_url')
             if app_id and app_name and app_user and tracking_url:
                 apps[app_id] = (app_name, app_user, tracking_url)
-                self.metrics[(app_name, app_user)] = {} 
+                self.metrics[(app_name, app_user)] = {}
         return apps
 
     def _get_running_apps(self):
         """
-        Retrieve running applications in Spark based on cluster 
+        Retrieve running applications in Spark based on cluster
         """
         if not self.cluster_mode:
             collectd.info("Cluster mode not defined")
@@ -403,26 +426,31 @@ class SparkApplicationPlugin(object):
         Get streaming metrics corresponding to a streaming application
 
         Args:
-        apps (dict): Mapping of application id to app name, user, 
+        apps (dict): Mapping of application id to app name, user,
                      and url endpoint for API call
         """
         for app_id, (app_name, app_user, tracking_url) in apps.iteritems():
-            resp = self.spark_agent.request_metrics(tracking_url, \
-                APPS_ENDPOINT, app_id, 'streaming/statistics')
-            if not resp: 
-                continue 
+            resp = self.spark_agent.request_metrics(tracking_url,
+                                                    APPS_ENDPOINT, app_id,
+                                                    'streaming/statistics')
+            if not resp:
+                continue
 
-            dim = {"app_name" : str(app_name), "user" : str(app_user)}
+            dim = {"app_name": str(app_name), "user": str(app_user)}
             dim.update(self.global_dimensions)
 
             stream_stat_metrics = self.metrics[(app_name, app_user)]
 
-            for key, (metric_name, metric_type) in metrics.SPARK_STREAMING_METRICS.iteritems():
-                if key not in resp: continue
+            for key, (metric_name, metric_type) in \
+                    metrics.SPARK_STREAMING_METRICS.iteritems():
+
+                if key not in resp:
+                    continue
                 metric_value = resp[key]
 
                 mr = stream_stat_metrics.get(key,
-                    MetricRecord(metric_name, metric_type, 0, dim))
+                                             MetricRecord(metric_name,
+                                                          metric_type, 0, dim))
                 mr.value += metric_value
                 stream_stat_metrics[key] = mr
 
@@ -431,33 +459,41 @@ class SparkApplicationPlugin(object):
         Get job metrics corresponding to a running application
 
         Args:
-        apps (dict): Mapping of application id to app name, user, 
+        apps (dict): Mapping of application id to app name, user,
                      and url endpoint for API call
         """
         for app_id, (app_name, app_user, tracking_url) in apps.iteritems():
-            resp = self.spark_agent.request_metrics(tracking_url, \
-                APPS_ENDPOINT, app_id, 'jobs', status="RUNNING")
-            if not resp: continue
+            resp = self.spark_agent.request_metrics(tracking_url,
+                                                    APPS_ENDPOINT, app_id,
+                                                    'jobs', status="RUNNING")
+            if not resp:
+                continue
 
-            dim = {"app_name" : str(app_name), "user" : str(app_user)}
+            dim = {"app_name": str(app_name), "user": str(app_user)}
             dim.update(self.global_dimensions)
 
             job_metrics = self.metrics[(app_name, app_user)]
             if len(resp):
-                job_metrics['spark.num_total_jobs'] = MetricRecord('spark.num_total_jobs', 
-                                                        'gauge', len(resp), dim)
+                job_metrics['spark.num_total_jobs'] = MetricRecord(
+                                                        'spark.num_total_jobs',
+                                                        'gauge',
+                                                        len(resp), dim)
 
             for job in resp:
                 status = str(job.get("status")).lower()
-                new_dim = {"status" : status}
+                new_dim = {"status": status}
                 new_dim.update(dim)
 
-                for key, (metric_name, metric_type) in metrics.SPARK_JOB_METRICS.iteritems():
-                    if key not in job: continue
+                for key, (metric_name, metric_type) in \
+                        metrics.SPARK_JOB_METRICS.iteritems():
+
+                    if key not in job:
+                        continue
                     metric_value = job[key]
-                    
-                    mr = job_metrics.get(key, MetricRecord(metric_name, 
-                                                    metric_type, 0, new_dim))
+
+                    mr = job_metrics.get(key, MetricRecord(metric_name,
+                                                           metric_type,
+                                                           0, new_dim))
                     mr.value += metric_value
                     job_metrics[key] = mr
 
@@ -466,33 +502,40 @@ class SparkApplicationPlugin(object):
         Get stage metrics corresponding to a running application
 
         Args:
-        apps (dict): Mapping of application id to app name, user, 
+        apps (dict): Mapping of application id to app name, user,
                      and url endpoint for API call
         """
         for app_id, (app_name, app_user, tracking_url) in apps.iteritems():
-            resp = self.spark_agent.request_metrics(tracking_url, \
-                APPS_ENDPOINT, app_id, 'stages', status="ACTIVE")
-            if not resp: continue 
+            resp = self.spark_agent.request_metrics(tracking_url,
+                                                    APPS_ENDPOINT, app_id,
+                                                    'stages', status="ACTIVE")
+            if not resp:
+                continue
 
-            dim = {"app_name" : str(app_name), "user" : str(app_user)}
+            dim = {"app_name": str(app_name), "user": str(app_user)}
             dim.update(self.global_dimensions)
 
             stage_metrics = self.metrics[(app_name, app_user)]
             if len(resp):
-                stage_metrics['spark.num_total_stages'] = MetricRecord('spark.num_total_stages',
-                                                            'gauge', len(resp), dim)
+                stage_metrics['spark.num_total_stages'] = MetricRecord(
+                                                    'spark.num_total_stages',
+                                                    'gauge', len(resp), dim)
 
             for stage in resp:
                 status = str(stage.get("status")).lower()
-                new_dim = {"status" : status}
+                new_dim = {"status": status}
                 new_dim.update(dim)
- 
-                for key, (metric_name, metric_type) in metrics.SPARK_STAGE_METRICS.iteritems():
-                    if key not in stage: continue
+
+                for key, (metric_name, metric_type) in \
+                        metrics.SPARK_STAGE_METRICS.iteritems():
+
+                    if key not in stage:
+                        continue
                     metric_value = stage[key]
-    
-                    mr = stage_metrics.get(key, MetricRecord(metric_name, 
-                                                    metric_type, 0, new_dim))
+
+                    mr = stage_metrics.get(key, MetricRecord(metric_name,
+                                                             metric_type,
+                                                             0, new_dim))
                     mr.value += metric_value
                     stage_metrics[key] = mr
 
@@ -500,40 +543,49 @@ class SparkApplicationPlugin(object):
                 if key == "executorRunTime" and len(resp) > 0:
                     mr.value /= len(resp)
 
-
     def _update_driver_metrics(self, executor, exec_metrics, dim):
         """
         Helper method to get driver specific metrics from executor endpoint
 
         Args:
-        executor (dict): JSON response containing driver-specific metrics   
-        exec_metrics (dict): Mapping of metric name (key in JSON response) to 
+        executor (dict): JSON response containing driver-specific metrics
+        exec_metrics (dict): Mapping of metric name (key in JSON response) to
                              MetricRecord object to be sent by collectd
-        dim (dict): Dictionary representing dimensions  
+        dim (dict): Dictionary representing dimensions
         """
-        for key, (metric_name, metric_type) in metrics.SPARK_DRIVER_METRICS.iteritems():
-            if key not in executor: continue
+        for key, (metric_name, metric_type) in \
+                metrics.SPARK_DRIVER_METRICS.iteritems():
+
+            if key not in executor:
+                continue
             metric_value = executor[key]
 
-            mr = exec_metrics.get(metric_name, MetricRecord(metric_name, metric_type, 0, dim))
+            mr = exec_metrics.get(metric_name, MetricRecord(metric_name,
+                                                            metric_type,
+                                                            0, dim))
             mr.value += metric_value
             exec_metrics[metric_name] = mr
 
     def _update_executor_metrics(self, executor, exec_metrics, dim):
         """
-        Helper method to get executor metrics 
+        Helper method to get executor metrics
 
         Args:
-        executor (dict): JSON response containing executor metrics   
-        exec_metrics (dict): Mapping of metric name (key in JSON response) to 
+        executor (dict): JSON response containing executor metrics
+        exec_metrics (dict): Mapping of metric name (key in JSON response) to
                              MetricRecord object to be sent by collectd
-        dim (dict): Dictionary representing dimensions  
+        dim (dict): Dictionary representing dimensions
         """
-        for key, (metric_name, metric_type) in metrics.SPARK_EXECUTOR_METRICS.iteritems():
-            if key not in executor: continue
+        for key, (metric_name, metric_type) in \
+                metrics.SPARK_EXECUTOR_METRICS.iteritems():
+
+            if key not in executor:
+                continue
             metric_value = executor[key]
 
-            mr = exec_metrics.get(metric_name, MetricRecord(metric_name, metric_type, 0, dim))
+            mr = exec_metrics.get(metric_name, MetricRecord(metric_name,
+                                                            metric_type,
+                                                            0, dim))
             mr.value += metric_value
             exec_metrics[metric_name] = mr
 
@@ -542,22 +594,26 @@ class SparkApplicationPlugin(object):
         Get executor metrics corresponding to a running application
 
         Args:
-        apps (dict): Mapping of application id to app name, user, 
+        apps (dict): Mapping of application id to app name, user,
                      and url endpoint for API call
         """
         for app_id, (app_name, app_user, tracking_url) in apps.iteritems():
-            resp = self.spark_agent.request_metrics(tracking_url, \
-                APPS_ENDPOINT, app_id, 'executors')
-            if not resp: continue 
+            resp = self.spark_agent.request_metrics(tracking_url,
+                                                    APPS_ENDPOINT,
+                                                    app_id, 'executors')
+            if not resp:
+                continue
 
-            dim = {"app_name" : str(app_name), "user" : str(app_user)}
+            dim = {"app_name": str(app_name), "user": str(app_user)}
             dim.update(self.global_dimensions)
 
             exec_metrics = self.metrics[(app_name, app_user)]
 
-            if len(resp):    
-                exec_metrics['spark.executor.count'] = MetricRecord('spark.executor.count', 
-                                                        'gauge', len(resp), dim)
+            if len(resp):
+                exec_metrics['spark.executor.count'] = MetricRecord(
+                                                        'spark.executor.count',
+                                                        'gauge',
+                                                        len(resp), dim)
 
             for executor in resp:
                 if executor.get('id') == 'driver':
@@ -595,8 +651,8 @@ class SparkApplicationPlugin(object):
         master (str): String representing master URL
 
         Returns:
-        bool: True if master URL contains host and port as expected 
-              and False otherwise 
+        bool: True if master URL contains host and port as expected
+              and False otherwise
         """
         host, port = master.rsplit(":", 1)
         if host and port:
@@ -613,7 +669,7 @@ class SparkApplicationPlugin(object):
         check for malformed data on split
 
         Args:
-        kv (list): List of key value pair 
+        kv (list): List of key value pair
 
         Returns:
         bool: True if list contained expected pair and False otherwise
@@ -642,9 +698,10 @@ class SparkApplicationPlugin(object):
                  from configuration file.")
         return dimensions
 
+
 class SparkPluginManager(object):
     """
-    Class managing Spark plugins for reporting metrics 
+    Class managing Spark plugins for reporting metrics
     """
 
     def __init__(self):
@@ -653,14 +710,15 @@ class SparkPluginManager(object):
 
     def configure(self, conf):
         collectd.info("Configuring plugins via Spark Plugin Manager")
-        
+
         config_map = dict([(c.key, c.values[0]) for c in conf.children])
         if METRIC_ADDRESS in config_map:
             self.sp_plugin = SparkProcessPlugin()
             self.sp_plugin.configure(config_map)
 
-        if APPS not in config_map: return
-        if config_map[APPS] == 'False': 
+        if APPS not in config_map:
+            return
+        if config_map[APPS] == 'False':
             collectd.info("Key - Applications - set to False: skipping \
                 Application Plugin initialization")
             return
@@ -672,6 +730,7 @@ class SparkPluginManager(object):
             self.sp_plugin.read()
         if self.sa_plugin:
             self.sa_plugin.read()
+
 
 if __name__ != '__main__':
     spm = SparkPluginManager()
