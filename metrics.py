@@ -226,8 +226,8 @@ SPARK_STAGE_METRICS = {
 
 SPARK_DRIVER_METRICS = {
 'rddBlocks': ('spark.driver.rdd_blocks', GAUGE),
-'memoryUsed': ('spark.driver.memory_used', GAUGE),
-'diskUsed': ('spark.driver.disk_used', GAUGE),
+'memoryUsed': ('spark.driver.memory_used', COUNTER),
+'diskUsed': ('spark.driver.disk_used', COUNTER),
 'activeTasks': ('spark.driver.active_tasks', GAUGE),
 'failedTasks': ('spark.driver.failed_tasks', COUNTER),
 'completedTasks': ('spark.driver.completed_tasks', COUNTER),
@@ -241,8 +241,8 @@ SPARK_DRIVER_METRICS = {
 
 SPARK_EXECUTOR_METRICS = {
 'rddBlocks': ('spark.executor.rdd_blocks', GAUGE),
-'memoryUsed': ('spark.executor.memory_used', GAUGE),
-'diskUsed': ('spark.executor.disk_used', GAUGE),
+'memoryUsed': ('spark.executor.memory_used', COUNTER),
+'diskUsed': ('spark.executor.disk_used', COUNTER),
 'activeTasks': ('spark.executor.active_tasks', GAUGE),
 'failedTasks': ('spark.executor.failed_tasks', COUNTER),
 'completedTasks': ('spark.executor.completed_tasks', COUNTER),
