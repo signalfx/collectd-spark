@@ -151,6 +151,8 @@ class SparkProcessPlugin(object):
         self.global_dimensions = {}
         self.spark_agent = SparkAgent()
         self.metric_sink = MetricSink()
+        self.master_port = None
+        self.worker_port = None
 
     def configure(self, config_map):
         """
@@ -705,16 +707,17 @@ class SparkPluginManager(object):
     """
 
     def __init__(self):
-        self.sp_plugin = None
-        self.sa_plugin = None
+        self.process_plugins = []
+        self.app_plugins = []
 
     def configure(self, conf):
         collectd.info("Configuring plugins via Spark Plugin Manager")
 
         config_map = dict([(c.key, c.values[0]) for c in conf.children])
         if METRIC_ADDRESS in config_map:
-            self.sp_plugin = SparkProcessPlugin()
-            self.sp_plugin.configure(config_map)
+            sp_plugin = SparkProcessPlugin()
+            sp_plugin.configure(config_map)
+            self.process_plugins.append(sp_plugin)
 
         if APPS not in config_map:
             return
@@ -722,14 +725,16 @@ class SparkPluginManager(object):
             collectd.info("Key - Applications - set to False: skipping \
                 Application Plugin initialization")
             return
-        self.sa_plugin = SparkApplicationPlugin()
-        self.sa_plugin.configure(config_map)
+        sa_plugin = SparkApplicationPlugin()
+        sa_plugin.configure(config_map)
+        self.app_plugins.append(sa_plugin)
 
     def read(self):
-        if self.sp_plugin:
-            self.sp_plugin.read()
-        if self.sa_plugin:
-            self.sa_plugin.read()
+        for sp_plugin in self.process_plugins:
+            sp_plugin.read()
+
+        for sa_plugin in self.app_plugins:
+            sa_plugin.read()
 
 
 if __name__ != '__main__':
