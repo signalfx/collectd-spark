@@ -11,5 +11,5 @@ CMD /.docker/setup_spark
 ADD integration-test/setup_spark /.docker/setup_spark
 
 ## The context of the image build should be the root dir of this repo!!
-ADD collectd-spark.py /opt/collectd-spark/
+ADD spark_plugin.py /opt/collectd-spark/
 ADD integration-test/20-spark-test.conf /etc/collectd/managed_config/
