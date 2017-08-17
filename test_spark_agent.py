@@ -1,10 +1,9 @@
 #!/usr/bin/env python
-import random
-import string
 from urllib2 import HTTPError, URLError
 from unittest import TestCase
 from mock import Mock, patch
 from spark_plugin import SparkAgent
+import json
 
 
 class FilePointer(object):
@@ -12,26 +11,32 @@ class FilePointer(object):
         self.read = "HTTPError"
         self.readline = "HTTPError"
 
+
 class SparkAgentTest(TestCase):
 
     def setUp(self):
         self.agent = SparkAgent()
-        self.host = random_string()
-        self.port = random_int()
 
     @patch('urllib2.urlopen')
-    def test_rest_request_basic(self, mock_urlopen):
-        mock_response = Mock()
-        mock_urlopen.return_value = mock_response
+    @patch('urllib2.Request')
+    def test_rest_request(self, mock_request, mock_urlopen):
+        mock_request_response = Mock()
+        mock_request.return_value = mock_request_response
+
+        mock_urlopen_response = Mock()
+        mock_urlopen.return_value = mock_urlopen_response
 
         actual_response = self.agent.rest_request("http://host", "/path")
-        self.assertEqual(actual_response, mock_response)
+
+        mock_request.assert_called_with("http://host/path")
+        mock_urlopen.assert_called_with(mock_request_response)
+        self.assertEqual(actual_response, mock_urlopen_response)
 
     @patch('urllib2.urlopen')
     def test_rest_request_exceptions(self, mock_urlopen):
-        mock_urlopen.side_effect = HTTPError(FilePointer(), FilePointer(),
-                                             FilePointer(), FilePointer(),
-                                             FilePointer())
+        num_args = 5
+        mock_urlopen.side_effect = HTTPError(*[FilePointer()
+                                               for i in range(num_args)])
         response = self.agent.rest_request("http://host", "/path")
         self.assertIsNone(response)
 
@@ -40,10 +45,15 @@ class SparkAgentTest(TestCase):
         response = self.agent.rest_request("http://host", "/path")
         self.assertIsNone(response)
 
+    @patch('spark_plugin.SparkAgent.rest_request')
+    def test_request_metrics(self, mock_rest_request):
+        data = {'key1': 'value1', 'key2': 'value2'}
+        mock_rest_request_response = Mock()
+        mock_read = Mock()
+        mock_read.return_value = json.dumps(data)
+        mock_rest_request_response.read = mock_read
+        mock_rest_request.return_value = mock_rest_request_response
 
-def random_string(length=8):
-    return ''.join(random.choice(string.lowercase) for i in range(length))
-
-
-def random_int(start=0, stop=100000):
-    return random.randint(start, stop)
+        expected_response = data
+        actual_response = self.agent.request_metrics("http://host", "/path")
+        self.assertDictEqual(actual_response, expected_response)
