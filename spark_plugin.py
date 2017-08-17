@@ -318,7 +318,8 @@ class SparkApplicationPlugin(object):
 
             elif key == 'Master':
                 if not self._validate_master(value):
-                    raise ValueError("Master not configured as (host:port)")
+                    raise ValueError("Master not configured as \
+                                     (http://host:port)")
                 self.master = value
 
             elif key == 'Dimensions' or key == 'Dimension':
