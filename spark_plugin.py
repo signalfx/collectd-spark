@@ -197,7 +197,7 @@ class SparkProcessPlugin(object):
         list of MetricRecord objects to be sent to SignalFx
         """
         if not resp:
-            return
+            return []
 
         dim = {"spark_process": process}
         dim.update(self.global_dimensions)
