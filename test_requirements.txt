@@ -1,3 +1,4 @@
 flake8
-pytest
 mock
+beautifulsoup4
+nose
