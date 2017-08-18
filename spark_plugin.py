@@ -702,38 +702,38 @@ class SparkPluginManager(object):
     Class managing Spark plugins for reporting metrics
     """
 
-    def __init__(self):
-        self.process_plugins = []
-        self.app_plugins = []
-
     def configure(self, conf):
         collectd.info("Configuring plugins via Spark Plugin Manager")
 
         config_map = dict([(c.key, c.values[0]) for c in conf.children])
+        sp_plugin = None
+        sa_plugin = None
+
         if METRIC_ADDRESS in config_map:
             sp_plugin = SparkProcessPlugin()
             sp_plugin.configure(config_map)
-            self.process_plugins.append(sp_plugin)
 
-        if APPS not in config_map:
+        if APPS in config_map and config_map[APPS] == 'True':
+            sa_plugin = SparkApplicationPlugin()
+            sa_plugin.configure(config_map)
+
+        plugins = []
+        if sp_plugin:
+            plugins.append(sp_plugin)
+        if sa_plugin:
+            plugins.append(sa_plugin)
+
+        if not plugins:
+            collectd.info("Not enough parameters supplied to config file")
             return
-        if config_map[APPS] == 'False':
-            collectd.info("Key - Applications - set to False: skipping \
-                Application Plugin initialization")
-            return
-        sa_plugin = SparkApplicationPlugin()
-        sa_plugin.configure(config_map)
-        self.app_plugins.append(sa_plugin)
+        collectd.register_read(self.read, interval=DEFAULT_INTERVAL,
+                               data=plugins)
 
-    def read(self):
-        for sp_plugin in self.process_plugins:
-            sp_plugin.read()
-
-        for sa_plugin in self.app_plugins:
-            sa_plugin.read()
+    def read(self, plugin_list):
+        for plugin in plugin_list:
+            plugin.read()
 
 
 if __name__ != '__main__':
     spm = SparkPluginManager()
     collectd.register_config(spm.configure)
-    collectd.register_read(spm.read, interval=DEFAULT_INTERVAL)
