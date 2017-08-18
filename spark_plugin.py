@@ -291,6 +291,8 @@ class SparkApplicationPlugin(object):
         self.spark_agent = SparkAgent()
         self.metric_sink = MetricSink()
         self.metrics = {}
+        self.cluster_mode = None
+        self.master = None
 
     def configure(self, config_map):
         """
@@ -478,16 +480,12 @@ class SparkApplicationPlugin(object):
 
             job_metrics = self.metrics[(app_name, app_user)]
             if len(resp):
-                job_metrics['spark.num_total_jobs'] = MetricRecord(
-                                                        'spark.num_total_jobs',
-                                                        'gauge',
-                                                        len(resp), dim)
+                job_metrics['spark.num_running_jobs'] = \
+                    MetricRecord('spark.num_running_jobs',
+                                 'gauge',
+                                 len(resp), dim)
 
             for job in resp:
-                status = str(job.get("status")).lower()
-                new_dim = {"status": status}
-                new_dim.update(dim)
-
                 for key, (metric_name, metric_type) in \
                         metrics.SPARK_JOB_METRICS.iteritems():
 
@@ -497,7 +495,7 @@ class SparkApplicationPlugin(object):
 
                     mr = job_metrics.get(key, MetricRecord(metric_name,
                                                            metric_type,
-                                                           0, new_dim))
+                                                           0, dim))
                     mr.value += metric_value
                     job_metrics[key] = mr
 
@@ -521,15 +519,11 @@ class SparkApplicationPlugin(object):
 
             stage_metrics = self.metrics[(app_name, app_user)]
             if len(resp):
-                stage_metrics['spark.num_total_stages'] = MetricRecord(
-                                                    'spark.num_total_stages',
+                stage_metrics['spark.num_active_stages'] = MetricRecord(
+                                                    'spark.num_active_stages',
                                                     'gauge', len(resp), dim)
 
             for stage in resp:
-                status = str(stage.get("status")).lower()
-                new_dim = {"status": status}
-                new_dim.update(dim)
-
                 for key, (metric_name, metric_type) in \
                         metrics.SPARK_STAGE_METRICS.iteritems():
 
@@ -539,7 +533,7 @@ class SparkApplicationPlugin(object):
 
                     mr = stage_metrics.get(key, MetricRecord(metric_name,
                                                              metric_type,
-                                                             0, new_dim))
+                                                             0, dim))
                     mr.value += metric_value
                     stage_metrics[key] = mr
 

@@ -65,8 +65,7 @@ html_text = """
             <li><strong>Submit Date:</strong> 2017/08/16 20:18:05</li>
             <li><strong>State:</strong> RUNNING</li>
             <li><strong>
-                    <a href="http://172.31.15.190:4040">Application Detail UI
-                    </a>
+                <a href="http://172.31.15.190:4040">Application Detail UI</a>
                 </strong></li>
           </ul>
         </div>

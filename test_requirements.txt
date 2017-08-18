@@ -1,4 +1,4 @@
 flake8
 mock
-beautifulsoup4
 nose
+beautifulsoup4

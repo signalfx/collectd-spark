@@ -34,22 +34,18 @@ worker_metrics = {
 
 master_standalone_json = {
     "activeapps": [{
-        "starttime": 1502914685924,
-        "id": "app-20170816201805-0010",
-        "name": "JavaNetworkWordCount",
-        "user": "root",
-        "memoryperslave": 512,
-        "submitdate": "Wed Aug 16 20: 18: 05 UTC 2017",
-        "state": "RUNNING",
-        "duration": 5983
+        "id": "standalone_id",
+        "name": "standalone_name",
+        "user": "standalone_user",
+        "state": "RUNNING"
     }]
 }
 
 master_mesos_json = {
    "frameworks": [
       {
-         "id": "driver-20170816222145-0030",
-         "name": "Spark Pi",
+         "id": "mesos_id",
+         "name": "mesos_name",
          "pid": "scheduler-69e6e727-d77e: 45769",
          "used_resources": {
             "disk": 0.0,
@@ -64,11 +60,11 @@ master_mesos_json = {
             "cpus": 0.0
          },
          "hostname": "ip-10-0-2-155.us-west-2.compute.internal",
-         "webui_url": "http: \/\/10.0.2.155: 4040",
+         "webui_url": "http://10.0.2.155:4040",
          "active": True,
          "connected": True,
          "recovered": False,
-         "user": "root",
+         "user": "mesos_user",
          "failover_timeout": 0.0,
          "checkpoint": False,
          "registered_time": 1502922223.00481,
@@ -203,24 +199,38 @@ master_mesos_json = {
 }
 
 running_jobs = [{
-  "jobId": 1,
-  "name": "start at JavaNetworkWordCount.java: 70",
-  "submissionTime": "2017-08-10T21: 14: 39.042GMT",
-  "stageIds": [2],
-  "status": "RUNNING",
-  "numTasks": 1,
   "numActiveTasks": 1,
-  "numCompletedTasks": 0,
-  "numSkippedTasks": 0,
-  "numFailedTasks": 0,
-  "numActiveStages": 1,
-  "numCompletedStages": 0,
-  "numSkippedStages": 0,
-  "numFailedStages": 0
+  "numActiveStages": 2,
+  "status": "RUNNING"
 }]
 
-active_stages = []
+active_stages = [{
+  "shuffleReadBytes": 1353,
+  "shuffleReadRecords": 2,
+  "status": "ACTIVE"
+}, {
+  "shuffleReadBytes": 200,
+  "shuffleReadRecords": 3,
+  "status": "ACTIVE"
+}]
 
-executors = []
+executors = [{
+  "id": "driver",
+  "memoryUsed": 30750,
+  "diskUsed": 1155,
+}, {
+  "id": "1",
+  "memoryUsed": 21898,
+  "diskUsed": 1823,
+}, {
+  "id": "0",
+  "memoryUsed": 12837,
+  "diskUsed": 150,
+}]
 
-streaming_stats = []
+streaming_stats = {
+  "avgInputRate": 0.0,
+  "avgSchedulingDelay": 4,
+  "avgProcessingTime": 93,
+  "avgTotalDelay": 97
+}
