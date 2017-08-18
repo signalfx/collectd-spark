@@ -35,7 +35,7 @@ class DummyCollectd(object):
         self.registered_configs.append(callback)
 
     # pylint: disable=unused-argument
-    def register_read(self, callback, interval=10, name=""):
+    def register_read(self, callback, interval=10, data="", name=""):
         assert self.is_running_tests
         self.registered_reads.append(callback)
 
