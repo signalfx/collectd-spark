@@ -16,7 +16,7 @@ An Apache Spark [collectd](http://www.collectd.org/) plugin which users can use 
 * spark 2.1.1 or later 
 
 ## Configuration
-See https://spark.apache.org/docs/latest/monitoring.html for more information on specific endpoints (specifically `REST API' and `Metrics').
+See https://spark.apache.org/docs/latest/monitoring.html for more information on specific endpoints (specifically 'REST API' and 'Metrics').
 
 At least one of the following keys are expected:
 
