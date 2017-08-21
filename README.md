@@ -23,7 +23,7 @@ At least one of the following keys are expected:
 * MetricsURL - Master or worker URL in the form of "http://host" to query if Metrics sink (and therefore, by default the Metrics HTTP Servlet) is enabled  
 * Applications - 'True' or 'False' string indicating if you want the specific collectd plugin to collect application level metrics 
 
-At least one of the following keys is expected if MetricsURL is provided: 
+At least one of the following keys is required if MetricsURL is provided: 
 
 * MasterPort - Port that master metrics are being sent to from metrics sink (defaulted 8080)
 * WorkerPort - Port that worker metrics are being sent to from metrics sink (defaulted 8081 in standalone)
