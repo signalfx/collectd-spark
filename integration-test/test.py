@@ -13,8 +13,7 @@ from subprocess import call
 
 SPARK_HOSTS = [
     'master',
-    'worker1',
-    'worker2',
+    'worker',
 ]
 TIMEOUT_SECS = 60
 
@@ -22,7 +21,11 @@ TIMEOUT_SECS = 60
 def get_metric_data():
     # Use httplib instead of requests so we don't have to install stuff with pip
     conn = httplib.HTTPConnection("fake_sfx", 8080)
-    conn.request("GET", "/")
+    try:
+        conn.request("GET", "/")
+    except Exception as e:
+        print(e)
+        print("COULD NOT CONNECT")
     resp = conn.getresponse()
     a = resp.read()
     return json.loads(a)

@@ -2,15 +2,15 @@
 
 wait_for () {
     host=$1
-    while ! nc -z $host 2379
+    while ! nc -z $host 8080
     do
-      sleep 0.2
+      echo "Didn't receive host 8080"
     done
 }
 
-for host in master worker1 worker2
+for host in master
 do
   wait_for $host
 done
-
+echo "FINISHED WAITING"
 exec /.docker/run.sh

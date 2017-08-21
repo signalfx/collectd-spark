@@ -46,7 +46,7 @@ RUN pip2.6 install six
 
 
 CMD /.docker/setup_spark
-ADD integration-test/setup_etcd /.docker/setup_spark
+ADD integration-test/setup_spark /.docker/setup_spark
 
 ## The context of the image build should be the root dir of this repo!!
 ADD spark_plugin.py /opt/collectd-spark/
