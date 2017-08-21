@@ -21,17 +21,17 @@ See https://spark.apache.org/docs/latest/monitoring.html for more information on
 At least one of the following keys are expected:
 
 * MetricsURL - Master or worker URL in the form of "http://host" to query if Metrics sink (and therefore, by default the Metrics HTTP Servlet) is enabled  
-* Applications - `True' or `False' string indicating if you want the specific collectd plugin to collect application level metrics 
+* Applications - 'True' or 'False' string indicating if you want the specific collectd plugin to collect application level metrics 
 
 At least one of the following keys is expected if MetricsURL is provided: 
 
 * MasterPort - Port that master metrics are being sent to from metrics sink (defaulted 8080)
 * WorkerPort - Port that worker metrics are being sent to from metrics sink (defaulted 8081 in standalone)
 
-The following keys are required if Applications is set to `True': 
+The following keys are required if Applications is set to 'True': 
 
 * Master - Address of Master node in the form "http://host:port" to query for active applications 
-* Cluster - Cluster your Spark environment is running on (currently "Standalone" and "Mesos" are supported)
+* Cluster - Cluster your Spark environment is running on (currently, "Standalone" and "Mesos" are supported)
 
 Optional configurations keys include:
 
