@@ -7,7 +7,7 @@ services:
     environment:
       SF_API_TOKEN: testing
       SF_INGEST_HOST: fake_sfx
-    links:
+    depends_on:
       - fake_sfx
       - master
       - worker
@@ -16,7 +16,7 @@ services:
     build:
       context: ..
       dockerfile: integration-test/Dockerfile.collectd.amazon2017.03
-    links:
+    depends_on:
       - fake_sfx
       - master
       - worker

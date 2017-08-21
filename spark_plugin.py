@@ -16,8 +16,6 @@ DEFAULT_INTERVAL = 10
 
 # Metric sink
 METRIC_ADDRESS = "MetricsURL"
-MASTER_PATH = "metrics/master/json"
-WORKER_PATH = "metrics/json"
 
 # Spark cluster modes
 SPARK_STANDALONE_MODE = 'Standalone'
@@ -26,8 +24,8 @@ SPARK_YARN_MODE = 'Yarn'
 
 # URL paths
 APPS_ENDPOINT = 'api/v1/applications'
-MASTER_PATH = 'metrics/master/json'
-WORKER_PATH = 'metrics/json'
+MASTER_PATH = 'metrics/master/json/'
+WORKER_PATH = 'metrics/json/'
 
 STANDALONE_STATE_PATH = '/json/'
 STANDALONE_APP_PATH = '/app/'
@@ -303,7 +301,7 @@ class SparkApplicationPlugin(object):
         """
         collectd.info("Configuring Spark Application Plugin ...")
 
-        required_keys = {'Cluster', 'Master'}
+        required_keys = ('Cluster', 'Master')
 
         for key in required_keys:
             if key not in config_map:

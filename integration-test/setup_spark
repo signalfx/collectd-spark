@@ -2,7 +2,7 @@
 
 wait_for () {
     host=$1
-    while ! nc -z $host 8080
+    while ! nc -z $host 8080 
     do
       echo "Didn't receive host 8080"
     done
