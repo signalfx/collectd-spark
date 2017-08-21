@@ -702,6 +702,9 @@ class SparkPluginManager(object):
     Class managing Spark plugins for reporting metrics
     """
 
+    def __init__(self):
+        self.count = 1
+
     def configure(self, conf):
         collectd.info("Configuring plugins via Spark Plugin Manager")
 
@@ -727,7 +730,8 @@ class SparkPluginManager(object):
             collectd.info("Not enough parameters supplied to config file")
             return
         collectd.register_read(self.read, interval=DEFAULT_INTERVAL,
-                               data=plugins)
+                               data=plugins, name="instance"+str(self.count))
+        self.count += 1
 
     def read(self, plugin_list):
         for plugin in plugin_list:
