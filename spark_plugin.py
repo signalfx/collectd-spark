@@ -35,6 +35,52 @@ MESOS_MASTER_APP_PATH = '/frameworks'
 HTTP_404_ERROR = "Error 404"
 
 
+def _validate_url(url):
+    return url.startswith("http://")
+
+
+def _validate_kv(kv):
+    """
+    check for malformed data on split
+
+    Args:
+    kv (list): List of key value pair
+
+    Returns:
+    bool: True if list contained expected pair and False otherwise
+    """
+    if len(kv) == 2 and '' not in kv:
+        return True
+    return False
+
+
+def _dimensions_str_to_dict(dimensions_str):
+    """
+    convert str config of dimensions into dictionary
+
+    Args:
+    dimensions_str (str): String representing custom dimensions
+    """
+
+    dimensions = {}
+    dimensions_list = dimensions_str.strip().split(',')
+
+    for dimension in dimensions_list:
+        kv = dimension.strip().split('=')
+        if _validate_kv(kv):
+            dimensions[kv[0]] = kv[1]
+        else:
+            collectd.info("Could not validate key-val in dimensions \
+             from configuration file.")
+    return dimensions
+
+
+def _add_metrics_to_set(set, metrics):
+    metrics_list = metrics.strip().split(",")
+    for metric in metrics_list:
+        set.add(metric)
+
+
 class MetricRecord(object):
     """
     Struct for all information needed to emit a single collectd metric.
@@ -152,6 +198,9 @@ class SparkProcessPlugin(object):
         self.metric_sink = MetricSink()
         self.master_port = None
         self.worker_port = None
+        self.enhanced_flag = False
+        self.include = set()
+        self.exclude = set()
 
     def configure(self, config_map):
         """
@@ -169,6 +218,8 @@ class SparkProcessPlugin(object):
 
         for key, value in config_map.iteritems():
             if key == METRIC_ADDRESS:
+                if not _validate_url(value):
+                    raise ValueError("URL is not prefixed with http://")
                 self.metric_address = value
             elif key == 'MasterPort':
                 collectd.info("MasterPort detected")
@@ -178,7 +229,13 @@ class SparkProcessPlugin(object):
                 self.worker_port = str(int(value))
             elif key == 'Dimensions' or key == 'Dimension':
                 self.global_dimensions.update(
-                    self._dimensions_str_to_dict(value))
+                        _dimensions_str_to_dict(value))
+            elif key == 'EnhancedMetrics' and value == "True":
+                self.enhanced_flag = True
+            elif key == 'IncludeMetrics':
+                _add_metrics_to_set(self.include, value)
+            elif key == 'ExcludeMetrics':
+                _add_metrics_to_set(self.exclude, value)
 
         collectd.info("Successfully configured Spark Process Plugin ...")
 
@@ -217,6 +274,31 @@ class SparkProcessPlugin(object):
 
             metric_records.append(MetricRecord(metric_name,
                                                metric_type, metric_value, dim))
+
+        if not self.enhanced_flag and len(self.include) == 0:
+            return metric_records
+
+        for key in metrics.SPARK_PROCESS_METRICS_ENHANCED:
+            metric_type_cat = metrics.SPARK_PROCESS_METRICS_ENHANCED[
+                            key]['metric_type_category']
+            data = resp[metric_type_cat]
+            if key not in data:
+                continue
+            if key in self.exclude:
+                continue
+            if len(self.include) > 0 and key not in self.include:
+                continue
+
+            metric_name = key
+            metric_type = metrics.SPARK_PROCESS_METRICS_ENHANCED[
+                        key]['metric_type']
+
+            metric_key = metrics.SPARK_PROCESS_METRICS_ENHANCED[key]['key']
+            metric_value = data[key][metric_key]
+
+            metric_records.append(MetricRecord(metric_name,
+                                               metric_type, metric_value, dim))
+
         return metric_records
 
     def read(self):
@@ -244,40 +326,6 @@ class SparkProcessPlugin(object):
         for metric in metrics:
             self.metric_sink.emit(metric)
 
-    def _validate_kv(self, kv):
-        """
-        check for malformed data on split
-
-        Args:
-        kv (list): List of key value pair
-
-        Returns:
-        bool: True if list contained expected pair and False otherwise
-        """
-        if len(kv) == 2 and '' not in kv:
-            return True
-        return False
-
-    def _dimensions_str_to_dict(self, dimensions_str):
-        """
-        convert str config of dimensions into dictionary
-
-        Args:
-        dimensions_str (str): String representing custom dimensions
-        """
-
-        dimensions = {}
-        dimensions_list = dimensions_str.strip().split(',')
-
-        for dimension in dimensions_list:
-            kv = dimension.strip().split('=')
-            if self._validate_kv(kv):
-                dimensions[kv[0]] = kv[1]
-            else:
-                collectd.info("Could not validate key-val in \
-                    dimensions from configuration file.")
-        return dimensions
-
 
 class SparkApplicationPlugin(object):
     """
@@ -291,6 +339,9 @@ class SparkApplicationPlugin(object):
         self.metrics = {}
         self.cluster_mode = None
         self.master = None
+        self.enhanced_flag = False
+        self.include = set()
+        self.exclude = set()
 
     def configure(self, config_map):
         """
@@ -315,16 +366,21 @@ class SparkApplicationPlugin(object):
                                       SPARK_YARN_MODE))
                 self.cluster_mode = value
                 self.global_dimensions['cluster'] = self.cluster_mode
-
             elif key == 'Master':
                 if not self._validate_master(value):
                     raise ValueError("Master not configured as \
                                      (http://host:port)")
                 self.master = value
-
             elif key == 'Dimensions' or key == 'Dimension':
                 self.global_dimensions.update(
-                    self._dimensions_str_to_dict(value))
+                        _dimensions_str_to_dict(value))
+
+            elif key == 'EnhancedMetrics' and value == "True":
+                self.enhanced_flag = True
+            elif key == 'IncludeMetrics':
+                _add_metrics_to_set(self.include, value)
+            elif key == 'ExcludeMetrics':
+                _add_metrics_to_set(self.exclude, value)
 
         collectd.info("Successfully configured Spark Application Plugin")
 
@@ -527,6 +583,7 @@ class SparkApplicationPlugin(object):
 
                     if key not in stage:
                         continue
+
                     metric_value = stage[key]
 
                     mr = stage_metrics.get(key, MetricRecord(metric_name,
@@ -538,6 +595,29 @@ class SparkApplicationPlugin(object):
             for key, mr in stage_metrics.iteritems():
                 if key == "executorRunTime" and len(resp) > 0:
                     mr.value /= len(resp)
+
+            if not self.enhanced_flag and len(self.include) == 0:
+                continue
+
+            for stage in resp:
+                for key, (metric_name, metric_type) in \
+                        metrics.SPARK_STAGE_METRICS_ENHANCED.iteritems():
+
+                    if key not in stage:
+                        continue
+                    if metric_name in self.exclude:
+                        continue
+                    if len(self.include) > 0 and \
+                            metric_name not in self.include:
+                        continue
+
+                    metric_value = stage[key]
+
+                    mr = stage_metrics.get(key, MetricRecord(metric_name,
+                                                             metric_type,
+                                                             0, dim))
+                    mr.value += metric_value
+                    stage_metrics[key] = mr
 
     def _update_driver_metrics(self, executor, exec_metrics, dim):
         """
@@ -562,6 +642,27 @@ class SparkApplicationPlugin(object):
             mr.value += metric_value
             exec_metrics[metric_name] = mr
 
+        if not self.enhanced_flag and len(self.include) == 0:
+            return
+
+        for key, (metric_name, metric_type) in \
+                metrics.SPARK_DRIVER_METRICS_ENHANCED.iteritems():
+
+            if key not in executor:
+                continue
+            if metric_name in self.exclude:
+                continue
+            if len(self.include) > 0 and metric_name not in self.include:
+                continue
+
+            metric_value = executor[key]
+
+            mr = exec_metrics.get(metric_name, MetricRecord(metric_name,
+                                                            metric_type,
+                                                            0, dim))
+            mr.value += metric_value
+            exec_metrics[metric_name] = mr
+
     def _update_executor_metrics(self, executor, exec_metrics, dim):
         """
         Helper method to get executor metrics
@@ -577,6 +678,27 @@ class SparkApplicationPlugin(object):
 
             if key not in executor:
                 continue
+            metric_value = executor[key]
+
+            mr = exec_metrics.get(metric_name, MetricRecord(metric_name,
+                                                            metric_type,
+                                                            0, dim))
+            mr.value += metric_value
+            exec_metrics[metric_name] = mr
+
+        if not self.enhanced_flag and len(self.include) == 0:
+            return
+
+        for key, (metric_name, metric_type) in \
+                metrics.SPARK_EXECUTOR_METRICS_ENHANCED.iteritems():
+
+            if key not in executor:
+                continue
+            if metric_name in self.exclude:
+                continue
+            if len(self.include) > 0 and metric_name not in self.include:
+                continue
+
             metric_value = executor[key]
 
             mr = exec_metrics.get(metric_name, MetricRecord(metric_name,
@@ -656,43 +778,9 @@ class SparkApplicationPlugin(object):
                 port = int(port)
             except:
                 return False
-            return True
+            return _validate_url(host)
         else:
             return False
-
-    def _validate_kv(self, kv):
-        """
-        check for malformed data on split
-
-        Args:
-        kv (list): List of key value pair
-
-        Returns:
-        bool: True if list contained expected pair and False otherwise
-        """
-        if len(kv) == 2 and '' not in kv:
-            return True
-        return False
-
-    def _dimensions_str_to_dict(self, dimensions_str):
-        """
-        convert str config of dimensions into dictionary
-
-        Args:
-        dimensions_str (str): String representing custom dimensions
-        """
-
-        dimensions = {}
-        dimensions_list = dimensions_str.strip().split(',')
-
-        for dimension in dimensions_list:
-            kv = dimension.strip().split('=')
-            if self._validate_kv(kv):
-                dimensions[kv[0]] = kv[1]
-            else:
-                collectd.info("Could not validate key-val in dimensions \
-                 from configuration file.")
-        return dimensions
 
 
 class SparkPluginManager(object):

@@ -13,7 +13,7 @@ An Apache Spark [collectd](http://www.collectd.org/) plugin which users can use 
 
 * collectd 4.9 or later (for the Python plugin)
 * Python 2.6 or later
-* spark 2.1.1 or later 
+* spark 2.2.0 or later 
 
 ## Configuration
 See https://spark.apache.org/docs/latest/monitoring.html for more information on specific endpoints (specifically 'REST API' and 'Metrics').
@@ -35,6 +35,9 @@ The following keys are required if Applications is set to 'True':
 
 Optional configurations keys include:
 
+* EnhancedMetrics - Flag to specify whether to include additional metrics 
+* IncludeMetrics - Metrics from enhanced metrics that can be included individually
+* ExcludeMetrics - Metrics from enhanced metrics that can be excluded individually
 * Dimensions - Add multiple global dimensions, formatted as "key1=value1,key2=value2,..."
 * Dimension - Add single global dimension to your metrics, formatted as "key=value"
 
@@ -52,6 +55,8 @@ LoadPlugin python
     MetricsURL "http://master"
     MasterPort 8080
     Applications "True"
+    EnhancedMetrics "False"
+    IncludeMetrics "jvm.pools.Code-Cache.committed"
     Master "http://master:8080"
     Cluster "Standalone"
     Dimension "name=master"

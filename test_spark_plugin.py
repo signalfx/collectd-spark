@@ -78,6 +78,10 @@ class SparkProcessTest(TestCase):
         with self.assertRaises(ValueError):
             self.plugin.configure(config_map)
 
+        config_map['MetricsURL'] = "localhost"
+        with self.assertRaises(ValueError):
+            self.plugin.configure(config_map)
+
     def test_configure_worker_port_none(self):
         config_map = {"Dimensions": "foo=bar,hello=world",
                       "MetricsURL": "http://host",
@@ -115,7 +119,9 @@ class SparkProcessTest(TestCase):
                       "Dimension": "key=value",
                       "MetricsURL": "http://host",
                       "MasterPort": 8080,
-                      "WorkerPort": 8081}
+                      "WorkerPort": 8081,
+                      "EnhancedMetrics": "True",
+                      "IncludeMetrics": "metric1,metric2"}
 
         expected_global_dim = {"foo": "bar", "hello": "world", "key": "value"}
         expected_metric_address = "http://host"
@@ -128,12 +134,18 @@ class SparkProcessTest(TestCase):
         self.assertEqual(self.plugin.metric_address, expected_metric_address)
         self.assertEqual(self.plugin.worker_port, expected_worker_port)
         self.assertEqual(self.plugin.master_port, expected_master_port)
+        assert(self.plugin.enhanced_flag)
+        self.assertEqual(2, len(self.plugin.include))
 
     def test_get_metrics(self):
         resp = {}
         process = ""
 
         expected_resp = []
+
+        include = set()
+        include.add("HiveExternalCatalog.fileCacheHits")
+        self.plugin.include = include
         actual_resp = self.plugin.get_metrics(resp, process)
         self.assertListEqual(actual_resp, expected_resp)
 
@@ -173,6 +185,9 @@ class SparkProcessTest(TestCase):
         self.plugin.metric_address = "http://host"
         self.plugin.master_port = "8080"
         self.plugin.worker_port = "8081"
+        include = set()
+        include.add("HiveExternalCatalog.fileCacheHits")
+        self.plugin.include = include
         self.plugin.read()
 
         exp_mr_1 = MetricRecord("jvm.heap.committed", "gauge",
@@ -274,12 +289,18 @@ class SparkApplicationTest(TestCase):
         with self.assertRaises(ValueError):
             self.plugin.configure(config_map)
 
+        config_map["Master"] = "host:8080"
+        with self.assertRaises(ValueError):
+            self.plugin.configure(config_map)
+
     def test_configure(self):
         cluster = "Standalone"
         config_map = {"Dimensions": "foo=bar,hello=world",
                       "Dimension": "key=value",
                       "Master": "http://host:8080",
-                      "Cluster": cluster}
+                      "Cluster": cluster,
+                      "EnhancedMetrics": "False",
+                      "ExcludeMetrics": "metric1,metric2"}
 
         expected_global_dim = {"foo": "bar", "hello": "world",
                                "key": "value", "cluster": cluster}
@@ -291,6 +312,8 @@ class SparkApplicationTest(TestCase):
                              expected_global_dim)
         self.assertEqual(self.plugin.master, expected_master)
         self.assertEqual(self.plugin.cluster_mode, expected_cluster)
+        assert(not self.plugin.enhanced_flag)
+        self.assertEqual(2, len(self.plugin.exclude))
 
         cluster = "Mesos"
         config_map["Cluster"] = cluster
@@ -371,9 +394,9 @@ class SparkApplicationTest(TestCase):
     def test_get_stage_metrics(self):
         self.plugin.metrics[self.key] = {}
         self.plugin._get_stage_metrics(self.apps)
-        exp_mr_1 = MetricRecord("spark.stage.shuffle_read_bytes",
+        exp_mr_1 = MetricRecord("spark.stage.input_bytes",
                                 "gauge", 1553, self.expected_dim)
-        exp_mr_2 = MetricRecord("spark.stage.shuffle_read_records",
+        exp_mr_2 = MetricRecord("spark.stage.input_records",
                                 "gauge", 5, self.expected_dim)
         exp_mr_3 = MetricRecord("spark.num_active_stages",
                                 "gauge", 2, self.expected_dim)
@@ -415,9 +438,9 @@ class SparkApplicationTest(TestCase):
         exp_mr_7 = MetricRecord("spark.num_running_jobs",
                                 "gauge", 1, self.expected_standalone_dim)
 
-        exp_mr_8 = MetricRecord("spark.stage.shuffle_read_bytes",
+        exp_mr_8 = MetricRecord("spark.stage.input_bytes",
                                 "gauge", 1553, self.expected_standalone_dim)
-        exp_mr_9 = MetricRecord("spark.stage.shuffle_read_records",
+        exp_mr_9 = MetricRecord("spark.stage.input_records",
                                 "gauge", 5, self.expected_standalone_dim)
         exp_mr_10 = MetricRecord("spark.num_active_stages",
                                  "gauge", 2, self.expected_standalone_dim)
@@ -460,9 +483,9 @@ class SparkApplicationTest(TestCase):
         exp_mr_7 = MetricRecord("spark.num_running_jobs",
                                 "gauge", 1, self.expected_mesos_dim)
 
-        exp_mr_8 = MetricRecord("spark.stage.shuffle_read_bytes",
+        exp_mr_8 = MetricRecord("spark.stage.input_bytes",
                                 "gauge", 1553, self.expected_mesos_dim)
-        exp_mr_9 = MetricRecord("spark.stage.shuffle_read_records",
+        exp_mr_9 = MetricRecord("spark.stage.input_records",
                                 "gauge", 5, self.expected_mesos_dim)
         exp_mr_10 = MetricRecord("spark.num_active_stages",
                                  "gauge", 2, self.expected_mesos_dim)

@@ -205,12 +205,12 @@ running_jobs = [{
 }]
 
 active_stages = [{
-  "shuffleReadBytes": 1353,
-  "shuffleReadRecords": 2,
+  "inputBytes": 1353,
+  "inputRecords": 2,
   "status": "ACTIVE"
 }, {
-  "shuffleReadBytes": 200,
-  "shuffleReadRecords": 3,
+  "inputBytes": 200,
+  "inputRecords": 3,
   "status": "ACTIVE"
 }]
 
