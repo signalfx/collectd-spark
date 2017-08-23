@@ -24,7 +24,7 @@ class MetricSinkTest(TestCase):
         expected_plugin_instance = '[spark_process=master]'
         expected_type_instance = 'master.aliveWorkers'
         expected_meta = {'true': 'true'}
-        expected_plugin = 'Apache Spark'
+        expected_plugin = 'apache_spark'
 
         record = MetricRecord(expected_type_instance, expected_type,
                               metric_value, metric_dimensions)
