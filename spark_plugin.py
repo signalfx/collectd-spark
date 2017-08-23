@@ -10,7 +10,7 @@ import re
 
 from urlparse import urljoin
 
-PLUGIN_NAME = "Apache Spark"
+PLUGIN_NAME = "apache_spark"
 APPS = 'Applications'
 DEFAULT_INTERVAL = 10
 
