@@ -6,8 +6,8 @@ except ImportError:
 import metrics
 import urllib2
 import json
+import re
 
-from bs4 import BeautifulSoup
 from urlparse import urljoin
 
 PLUGIN_NAME = "Apache Spark"
@@ -259,17 +259,14 @@ class SparkProcessPlugin(object):
 
         metric_records = []
 
-        for key in metrics.SPARK_PROCESS_METRICS:
-            metric_type_cat = metrics.SPARK_PROCESS_METRICS[
-                            key]['metric_type_category']
+        for key, (metric_type, metric_type_cat, metric_key) \
+                in metrics.SPARK_PROCESS_METRICS.iteritems():
+
             data = resp[metric_type_cat]
             if key not in data:
                 continue
 
             metric_name = key
-            metric_type = metrics.SPARK_PROCESS_METRICS[key]['metric_type']
-
-            metric_key = metrics.SPARK_PROCESS_METRICS[key]['key']
             metric_value = data[key][metric_key]
 
             metric_records.append(MetricRecord(metric_name,
@@ -278,9 +275,9 @@ class SparkProcessPlugin(object):
         if not self.enhanced_flag and len(self.include) == 0:
             return metric_records
 
-        for key in metrics.SPARK_PROCESS_METRICS_ENHANCED:
-            metric_type_cat = metrics.SPARK_PROCESS_METRICS_ENHANCED[
-                            key]['metric_type_category']
+        for key, (metric_type, metric_type_cat, metric_key) \
+                in metrics.SPARK_PROCESS_METRICS_ENHANCED.iteritems():
+
             data = resp[metric_type_cat]
             if key not in data:
                 continue
@@ -290,10 +287,6 @@ class SparkProcessPlugin(object):
                 continue
 
             metric_name = key
-            metric_type = metrics.SPARK_PROCESS_METRICS_ENHANCED[
-                        key]['metric_type']
-
-            metric_key = metrics.SPARK_PROCESS_METRICS_ENHANCED[key]['key']
             metric_value = data[key][metric_key]
 
             metric_records.append(MetricRecord(metric_name,
@@ -406,6 +399,8 @@ class SparkApplicationPlugin(object):
 
         # Send metrics to SignalFx
         self.post_metrics()
+
+        # clear metrics data structure
         self.cleanup()
 
     def _get_standalone_apps(self):
@@ -432,17 +427,19 @@ class SparkApplicationPlugin(object):
             resp = self.spark_agent.rest_request(self.master,
                                                  STANDALONE_APP_PATH,
                                                  appId=app_id)
-            dom = BeautifulSoup(resp.read(), 'html.parser')
-            app_detail_ui_links = dom.find_all('a',
-                                               string='Application Detail UI')
-            if not app_detail_ui_links:
-                app_detail_ui_links = dom.find_all(
-                    'a', text='Application Detail UI')
+            html = resp.read()
+            app_url_list = [match.start() for match in
+                            re.finditer("Application Detail UI", html)]
 
-            if app_detail_ui_links and len(app_detail_ui_links) == 1:
-                tracking_url = app_detail_ui_links[0].attrs['href']
-            else:
+            if not app_url_list or len(app_url_list) != 1:
                 continue
+
+            end = app_url_list[0]
+            quote = html[end-2]
+            start = html.rfind(quote, 0, end-2)
+            if start == -1:
+                continue
+            tracking_url = html[start+1:end-2]
             apps[app_id] = (app_name, app_user, tracking_url)
             self.metrics[(app_name, app_user)] = {}
         return apps
@@ -501,7 +498,7 @@ class SparkApplicationPlugin(object):
 
             stream_stat_metrics = self.metrics[(app_name, app_user)]
 
-            for key, (metric_name, metric_type) in \
+            for key, (metric_type, metric_name) in \
                     metrics.SPARK_STREAMING_METRICS.iteritems():
 
                 if key not in resp:
@@ -540,7 +537,7 @@ class SparkApplicationPlugin(object):
                                  len(resp), dim)
 
             for job in resp:
-                for key, (metric_name, metric_type) in \
+                for key, (metric_type, metric_name) in \
                         metrics.SPARK_JOB_METRICS.iteritems():
 
                     if key not in job:
@@ -578,7 +575,7 @@ class SparkApplicationPlugin(object):
                                                     'gauge', len(resp), dim)
 
             for stage in resp:
-                for key, (metric_name, metric_type) in \
+                for key, (metric_type, metric_name) in \
                         metrics.SPARK_STAGE_METRICS.iteritems():
 
                     if key not in stage:
@@ -600,7 +597,7 @@ class SparkApplicationPlugin(object):
                 continue
 
             for stage in resp:
-                for key, (metric_name, metric_type) in \
+                for key, (metric_type, metric_name) in \
                         metrics.SPARK_STAGE_METRICS_ENHANCED.iteritems():
 
                     if key not in stage:
@@ -629,7 +626,7 @@ class SparkApplicationPlugin(object):
                              MetricRecord object to be sent by collectd
         dim (dict): Dictionary representing dimensions
         """
-        for key, (metric_name, metric_type) in \
+        for key, (metric_type, metric_name) in \
                 metrics.SPARK_DRIVER_METRICS.iteritems():
 
             if key not in executor:
@@ -645,7 +642,7 @@ class SparkApplicationPlugin(object):
         if not self.enhanced_flag and len(self.include) == 0:
             return
 
-        for key, (metric_name, metric_type) in \
+        for key, (metric_type, metric_name) in \
                 metrics.SPARK_DRIVER_METRICS_ENHANCED.iteritems():
 
             if key not in executor:
@@ -673,7 +670,7 @@ class SparkApplicationPlugin(object):
                              MetricRecord object to be sent by collectd
         dim (dict): Dictionary representing dimensions
         """
-        for key, (metric_name, metric_type) in \
+        for key, (metric_type, metric_name) in \
                 metrics.SPARK_EXECUTOR_METRICS.iteritems():
 
             if key not in executor:
@@ -689,7 +686,7 @@ class SparkApplicationPlugin(object):
         if not self.enhanced_flag and len(self.include) == 0:
             return
 
-        for key, (metric_name, metric_type) in \
+        for key, (metric_type, metric_name) in \
                 metrics.SPARK_EXECUTOR_METRICS_ENHANCED.iteritems():
 
             if key not in executor:

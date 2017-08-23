@@ -7,8 +7,6 @@ ENV COLLECTD_INTERVAL=3 COLLECTD_HOSTNAME=spark-test DISABLE_AGGREGATION=true DI
 RUN apt-get update &&\
     apt-get install -yq netcat curl
 
-RUN pip install beautifulsoup4
-
 CMD /.docker/setup_spark
 
 ADD integration-test/setup_spark /.docker/setup_spark
