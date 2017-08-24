@@ -26,7 +26,7 @@ At least one of the following keys are expected:
 At least one of the following keys is required if MetricsURL is provided: 
 
 * MasterPort - Port that master metrics are being sent to from metrics sink (defaulted 8080)
-* WorkerPort - Port that worker metrics are being sent to from metrics sink (defaulted 8081 in standalone)
+* WorkerPorts - Ports that worker metrics are being sent to from metrics sink (single worker process defaulted 8081 in standalone)
 
 The following keys are required if Applications is set to 'True': 
 
@@ -53,7 +53,7 @@ LoadPlugin python
   
   <Module spark_plugin>
     MetricsURL "http://master"
-    MasterPort 8080
+    MasterPort "8080"
     Applications "True"
     EnhancedMetrics "False"
     IncludeMetrics "jvm.pools.Code-Cache.committed"
@@ -64,7 +64,7 @@ LoadPlugin python
   
   <Module spark_plugin>
     MetricsURL "http://worker"
-    WorkerPort 8081
+    WorkerPorts "8081,8082"
     Applications "False"
   </Module>
 </Plugin>
