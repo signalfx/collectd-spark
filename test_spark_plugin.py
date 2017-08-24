@@ -70,11 +70,11 @@ class SparkProcessTest(TestCase):
 
         del config_map['MasterPort']
 
-        config_map['WorkerPort'] = "Non-integer port"
+        config_map['WorkerPorts'] = "Non-integer port"
         with self.assertRaises(ValueError):
             self.plugin.configure(config_map)
 
-        config_map['WorkerPort'] = "8080.0"
+        config_map['WorkerPorts'] = "8080.0"
         with self.assertRaises(ValueError):
             self.plugin.configure(config_map)
 
@@ -85,7 +85,7 @@ class SparkProcessTest(TestCase):
     def test_configure_worker_port_none(self):
         config_map = {"Dimensions": "foo=bar,hello=world",
                       "MetricsURL": "http://host",
-                      "MasterPort": 8080}
+                      "MasterPort": "8080"}
 
         expected_global_dim = {"foo": "bar", "hello": "world"}
         expected_metric_address = "http://host"
@@ -96,12 +96,12 @@ class SparkProcessTest(TestCase):
                              expected_global_dim)
         self.assertEqual(self.plugin.metric_address, expected_metric_address)
         self.assertEqual(self.plugin.master_port, expected_master_port)
-        self.assertIsNone(self.plugin.worker_port)
+        self.assertEqual(0, len(self.plugin.worker_ports))
 
     def test_configure_master_port_none(self):
         config_map = {"Dimensions": "foo=bar,hello=world",
                       "MetricsURL": "http://host",
-                      "WorkerPort": 8081}
+                      "WorkerPorts": "8081"}
 
         expected_global_dim = {"foo": "bar", "hello": "world"}
         expected_metric_address = "http://host"
@@ -111,15 +111,15 @@ class SparkProcessTest(TestCase):
         self.assertDictEqual(self.plugin.global_dimensions,
                              expected_global_dim)
         self.assertEqual(self.plugin.metric_address, expected_metric_address)
-        self.assertEqual(self.plugin.worker_port, expected_worker_port)
+        self.assertEqual(self.plugin.worker_ports[0], expected_worker_port)
         self.assertIsNone(self.plugin.master_port)
 
     def test_configure(self):
         config_map = {"Dimensions": "foo=bar,hello=world",
                       "Dimension": "key=value",
                       "MetricsURL": "http://host",
-                      "MasterPort": 8080,
-                      "WorkerPort": 8081,
+                      "MasterPort": "8080",
+                      "WorkerPorts": "8081",
                       "EnhancedMetrics": "True",
                       "IncludeMetrics": "metric1,metric2"}
 
@@ -132,7 +132,7 @@ class SparkProcessTest(TestCase):
         self.assertDictEqual(self.plugin.global_dimensions,
                              expected_global_dim)
         self.assertEqual(self.plugin.metric_address, expected_metric_address)
-        self.assertEqual(self.plugin.worker_port, expected_worker_port)
+        self.assertEqual(self.plugin.worker_ports[0], expected_worker_port)
         self.assertEqual(self.plugin.master_port, expected_master_port)
         assert(self.plugin.enhanced_flag)
         self.assertEqual(2, len(self.plugin.include))
@@ -184,7 +184,7 @@ class SparkProcessTest(TestCase):
     def test_read_and_post_metrics(self):
         self.plugin.metric_address = "http://host"
         self.plugin.master_port = "8080"
-        self.plugin.worker_port = "8081"
+        self.plugin.worker_ports = ["8081"]
         include = set()
         include.add("HiveExternalCatalog.fileCacheHits")
         self.plugin.include = include
@@ -193,15 +193,18 @@ class SparkProcessTest(TestCase):
         exp_mr_1 = MetricRecord("jvm.heap.committed", "gauge",
                                 0.0257, {"spark_process": "master"})
         exp_mr_2 = MetricRecord("jvm.heap.committed", "gauge",
-                                0.0434, {"spark_process": "worker"})
+                                0.0434, {"spark_process": "worker",
+                                         "worker_port": "8081"})
         exp_mr_3 = MetricRecord("jvm.heap.used", "gauge",
                                 26716912, {"spark_process": "master"})
         exp_mr_4 = MetricRecord("jvm.heap.used", "gauge",
-                                45102544, {"spark_process": "worker"})
+                                45102544, {"spark_process": "worker",
+                                           "worker_port": "8081"})
         exp_mr_5 = MetricRecord("HiveExternalCatalog.fileCacheHits", "counter",
                                 2, {"spark_process": "master"})
         exp_mr_6 = MetricRecord("HiveExternalCatalog.fileCacheHits", "counter",
-                                0, {"spark_process": "worker"})
+                                0, {"spark_process": "worker",
+                                    "worker_port": "8081"})
         expected_records = [exp_mr_1, exp_mr_2, exp_mr_3,
                             exp_mr_4, exp_mr_5, exp_mr_6]
         self._verify_records_captured(expected_records)

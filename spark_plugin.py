@@ -197,7 +197,7 @@ class SparkProcessPlugin(object):
         self.spark_agent = SparkAgent()
         self.metric_sink = MetricSink()
         self.master_port = None
-        self.worker_port = None
+        self.worker_ports = []
         self.enhanced_flag = False
         self.include = set()
         self.exclude = set()
@@ -211,9 +211,9 @@ class SparkProcessPlugin(object):
         """
         collectd.info("Configuring Spark Process Plugin ...")
 
-        if 'MasterPort' not in config_map and 'WorkerPort' not in config_map:
+        if 'MasterPort' not in config_map and 'WorkerPorts' not in config_map:
             raise ValueError("No port provided for metrics url - \
-                please provide key 'MasterPort' and/or 'WorkerPort'")
+                please provide key 'MasterPort' and/or 'WorkerPorts'")
             return
 
         for key, value in config_map.iteritems():
@@ -224,9 +224,11 @@ class SparkProcessPlugin(object):
             elif key == 'MasterPort':
                 collectd.info("MasterPort detected")
                 self.master_port = str(int(value))
-            elif key == 'WorkerPort':
-                collectd.info("WorkerPort detected")
-                self.worker_port = str(int(value))
+            elif key == 'WorkerPorts':
+                collectd.info("WorkerPort(s) detected")
+                worker_ports = value.split(",")
+                for port in worker_ports:
+                    self.worker_ports.append(str(int(port)))
             elif key == 'Dimensions' or key == 'Dimension':
                 self.global_dimensions.update(
                         _dimensions_str_to_dict(value))
@@ -239,7 +241,7 @@ class SparkProcessPlugin(object):
 
         collectd.info("Successfully configured Spark Process Plugin ...")
 
-    def get_metrics(self, resp, process):
+    def get_metrics(self, resp, process, *args):
         """
         Helper method to parse response json
 
@@ -255,6 +257,10 @@ class SparkProcessPlugin(object):
             return []
 
         dim = {"spark_process": process}
+
+        if args:
+            dim["worker_port"] = args[0]
+
         dim.update(self.global_dimensions)
 
         metric_records = []
@@ -306,11 +312,14 @@ class SparkProcessPlugin(object):
             master_metrics = self.get_metrics(master_resp, 'master')
             self.post_metrics(master_metrics)
 
-        if self.worker_port:
-            worker = self.metric_address+":"+self.worker_port
-            worker_resp = self.spark_agent.request_metrics(worker, WORKER_PATH)
-            worker_metrics = self.get_metrics(worker_resp, 'worker')
-            self.post_metrics(worker_metrics)
+        if self.worker_ports:
+            for worker_port in self.worker_ports:
+                worker = self.metric_address+":"+worker_port
+                worker_resp = self.spark_agent.request_metrics(worker,
+                                                               WORKER_PATH)
+                worker_metrics = self.get_metrics(worker_resp,
+                                                  'worker', worker_port)
+                self.post_metrics(worker_metrics)
 
     def post_metrics(self, metrics):
         """
