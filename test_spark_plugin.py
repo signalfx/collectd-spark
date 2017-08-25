@@ -85,7 +85,7 @@ class SparkProcessTest(TestCase):
     def test_configure_worker_port_none(self):
         config_map = {"Dimensions": "foo=bar,hello=world",
                       "MetricsURL": "http://host",
-                      "MasterPort": "8080"}
+                      "MasterPort": 8080}
 
         expected_global_dim = {"foo": "bar", "hello": "world"}
         expected_metric_address = "http://host"
@@ -101,25 +101,27 @@ class SparkProcessTest(TestCase):
     def test_configure_master_port_none(self):
         config_map = {"Dimensions": "foo=bar,hello=world",
                       "MetricsURL": "http://host",
-                      "WorkerPorts": "8081"}
+                      "WorkerPorts": [8081, 8082]}
 
         expected_global_dim = {"foo": "bar", "hello": "world"}
         expected_metric_address = "http://host"
         expected_worker_port = "8081"
+        expected_worker_port_2 = "8082"
 
         self.plugin.configure(config_map)
         self.assertDictEqual(self.plugin.global_dimensions,
                              expected_global_dim)
         self.assertEqual(self.plugin.metric_address, expected_metric_address)
         self.assertEqual(self.plugin.worker_ports[0], expected_worker_port)
+        self.assertEqual(self.plugin.worker_ports[1], expected_worker_port_2)
         self.assertIsNone(self.plugin.master_port)
 
     def test_configure(self):
         config_map = {"Dimensions": "foo=bar,hello=world",
                       "Dimension": "key=value",
                       "MetricsURL": "http://host",
-                      "MasterPort": "8080",
-                      "WorkerPorts": "8081",
+                      "MasterPort": 8080,
+                      "WorkerPorts": [8081],
                       "EnhancedMetrics": "True",
                       "IncludeMetrics": "metric1,metric2"}
 

@@ -226,8 +226,7 @@ class SparkProcessPlugin(object):
                 self.master_port = str(int(value))
             elif key == 'WorkerPorts':
                 collectd.info("WorkerPort(s) detected")
-                worker_ports = value.split(",")
-                for port in worker_ports:
+                for port in value:
                     self.worker_ports.append(str(int(port)))
             elif key == 'Dimensions' or key == 'Dimension':
                 self.global_dimensions.update(
@@ -800,7 +799,8 @@ class SparkPluginManager(object):
     def configure(self, conf):
         collectd.info("Configuring plugins via Spark Plugin Manager")
 
-        config_map = dict([(c.key, c.values[0]) for c in conf.children])
+        config_map = dict([(c.key, c.values[0]) if c.key != "WorkerPorts"
+                           else (c.key, c.values) for c in conf.children])
         sp_plugin = None
         sa_plugin = None
 
