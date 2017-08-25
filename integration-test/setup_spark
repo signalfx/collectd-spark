@@ -1,0 +1,17 @@
+#!/bin/bash
+
+wait_for () {
+    host=$1
+    while ! [[ "nc -z $host 8080" || "nc -z $host 8081" ]]
+    do
+      echo "Didn't receive host 8080"
+      sleep 0.2 
+    done
+}
+
+for host in master worker
+do
+  wait_for $host
+done
+
+exec /.docker/run.sh
