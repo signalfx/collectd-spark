@@ -222,6 +222,7 @@ SPARK_DRIVER_METRICS = {
     "totalInputBytes": (COUNTER, "spark.driver.total_input_bytes"),
     "totalShuffleRead": (COUNTER, "spark.driver.total_shuffle_read"),
     "totalShuffleWrite": (COUNTER, "spark.driver.total_shuffle_write"),
+    "totalTasks": (COUNTER, "spark.driver.total_tasks"),
     "maxMemory": (GAUGE, "spark.driver.max_memory")
 }
 
@@ -230,7 +231,6 @@ SPARK_DRIVER_METRICS_ENHANCED = {
     "activeTasks": (GAUGE, "spark.driver.active_tasks"),
     "failedTasks": (COUNTER, "spark.driver.failed_tasks"),
     "completedTasks": (COUNTER, "spark.driver.completed_tasks"),
-    "totalTasks": (COUNTER, "spark.driver.total_tasks"),
     "totalDuration": (COUNTER, "spark.driver.total_duration")
 }
 
