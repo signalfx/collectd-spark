@@ -40,9 +40,9 @@ ADD integration-test/collectd.conf /etc/collectd.conf
 # Debian is super minimalistic
 RUN yum install -y nc
 RUN yum -y install python-pip
+RUN easy_install-2.6 python
 RUN easy_install-2.6 pip
-RUN pip2.6 install urllib2
-RUN pip2.6 install urlparse2
+RUN pip-2.6 install urlparse2
 
 CMD /.docker/setup_spark
 ADD integration-test/setup_spark /.docker/setup_spark
