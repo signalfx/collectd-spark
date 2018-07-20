@@ -31,6 +31,8 @@ STANDALONE_STATE_PATH = '/json/'
 STANDALONE_APP_PATH = '/app/'
 MESOS_MASTER_APP_PATH = '/frameworks'
 
+YARN_MASTER_APP_PATH = '/ws/v1/cluster/apps'
+
 # Error match
 HTTP_404_ERROR = "Error 404"
 
@@ -183,7 +185,7 @@ class SparkAgent(object):
             if HTTP_404_ERROR not in str(e):
                 collectd.info("Unable to make request at (%s) %s" % (e, url))
             return None
-        except:
+        except Exception:
             return None
 
 
@@ -474,6 +476,28 @@ class SparkApplicationPlugin(object):
                 self.metrics[(app_name, app_user)] = {}
         return apps
 
+    def _get_yarn_apps(self):
+        """
+        Retrieve all applications corresponding to Spark mesos cluster
+        from yarn
+        """
+        resp = self.spark_agent.request_metrics(self.master,
+                                                YARN_MASTER_APP_PATH)
+        apps = {}
+
+        for app in resp.get('apps', {}).get('app', []):
+            if app.get('applicationType', "").upper() == 'SPARK' \
+               and app.get('state', "").upper() == "RUNNING":
+                app_id = app.get('id')
+                app_name = app.get('name')
+                app_user = app.get('user')
+                tracking_url = app.get('trackingUrl')
+
+                if app_id and app_name and app_user and tracking_url:
+                    apps[app_id] = (app_name, app_user, tracking_url)
+                    self.metrics[(app_name, app_user)] = {}
+        return apps
+
     def _get_running_apps(self):
         """
         Retrieve running applications in Spark based on cluster
@@ -485,6 +509,8 @@ class SparkApplicationPlugin(object):
             return self._get_standalone_apps()
         elif self.cluster_mode == SPARK_MESOS_MODE:
             return self._get_mesos_apps()
+        elif self.cluster_mode == SPARK_YARN_MODE:
+            return self._get_yarn_apps()
 
     def _get_streaming_metrics(self, apps):
         """
@@ -760,8 +786,6 @@ class SparkApplicationPlugin(object):
                 self.metric_sink.emit(mr)
 
     def _validate_cluster(self, cluster_mode):
-        if cluster_mode == SPARK_YARN_MODE:
-            raise ValueError("Sorry!!! Yarn not yet supported")
         return cluster_mode == SPARK_STANDALONE_MODE or \
             cluster_mode == SPARK_MESOS_MODE or cluster_mode == SPARK_YARN_MODE
 
@@ -781,7 +805,7 @@ class SparkApplicationPlugin(object):
         if host and port:
             try:
                 port = int(port)
-            except:
+            except (ValueError, TypeError):
                 return False
             return _validate_url(host)
         else:
