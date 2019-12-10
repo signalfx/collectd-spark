@@ -1,8 +1,7 @@
 #!/usr/bin/env python
-import httplib
+import http.client
 import json
-from time import time, sleep
-from subprocess import call
+from time import sleep, time
 
 # Quick and dirty integration test for multi-cluster support for spark for
 # one collectd instance. This test script is intended to be run with
@@ -11,16 +10,13 @@ from subprocess import call
 # This is not very flexible but could be expanded to support other types of
 # integration tests if so desired.
 
-SPARK_HOSTS = [
-    'master',
-    'worker',
-]
+SPARK_HOSTS = ["master", "worker"]
 TIMEOUT_SECS = 60
 
 
 def get_metric_data():
     # Use httplib instead of requests so we don't have to install stuff with pip
-    conn = httplib.HTTPConnection("fake_sfx", 8080)
+    conn = http.client.HTTPConnection("fake_sfx", 8080)
     try:
         conn.request("GET", "/")
     except Exception as e:
@@ -34,10 +30,12 @@ def get_metric_data():
 def wait_for_metrics_from_each_member():
     start = time()
     for member in SPARK_HOSTS:
-        print 'Waiting for metrics from member %s...' % (member,)
-        eventually_true(lambda: any([member in m.get('plugin_instance').split(':')[0] for m in get_metric_data()]),
-                        TIMEOUT_SECS - (time() - start))
-        print 'Found!'
+        print("Waiting for metrics from member %s..." % (member,))
+        eventually_true(
+            lambda: any([member in m.get("plugin_instance").split(":")[0] for m in get_metric_data()]),
+            TIMEOUT_SECS - (time() - start),
+        )
+        print("Found!")
 
 
 def eventually_true(f, timeout_secs):

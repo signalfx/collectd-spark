@@ -129,6 +129,5 @@ html_text = """
 
 
 class MockHTMLResponse(object):
-
     def read(self):
-        return html_text
+        return html_text.encode("utf-8")
