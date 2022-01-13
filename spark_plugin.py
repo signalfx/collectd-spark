@@ -843,9 +843,10 @@ class SparkPluginManager(object):
             sp_plugin = SparkProcessPlugin()
             sp_plugin.configure(config_map)
 
-        if APPS in config_map and config_map[APPS] == "True":
-            sa_plugin = SparkApplicationPlugin()
-            sa_plugin.configure(config_map)
+        # SA does not allow APPS in worker mode, only in master. shortcut it for now
+        #if APPS in config_map and config_map[APPS] == "True":
+        sa_plugin = SparkApplicationPlugin()
+        sa_plugin.configure(config_map)
 
         plugins = []
         if sp_plugin:

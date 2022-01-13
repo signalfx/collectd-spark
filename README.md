@@ -1,7 +1,6 @@
-# collectd Apache Spark Plugin
+# collectd DataBricks draft only to be used for proof of concept
+# DO NOT MERGE!!!!
 
-An Apache Spark [collectd](http://www.collectd.org/) plugin which users can use
-to send metrics from Spark cluster/instances to SignalFx.
-
-Please refer to the [documentation](https://docs.signalfx.com/en/latest/integrations/integrations-reference/integrations.apache.spark.html) for
-installation and configuration instructions.
+There are many hacks included to workaround SA non-existing options
+This change can push all available metrics when enhanced flag is turned on
+Databricks does not show running jobs or active stages, so we just pull everything in the last hour
