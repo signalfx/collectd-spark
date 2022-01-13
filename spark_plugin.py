@@ -3,6 +3,7 @@ try:
 except ImportError:
     import dummy_collectd as collectd
 
+import datetime
 import json
 import re
 
@@ -37,6 +38,11 @@ YARN_MASTER_APP_PATH = "/ws/v1/cluster/apps"
 # Error match
 HTTP_404_ERROR = "Error 404"
 
+
+def _remove_prefix(input_string, prefix):
+    if prefix and input_string.startswith(prefix):
+        return input_string[len(prefix):]
+    return input_string
 
 def _validate_url(url):
     return url.startswith("http://")
@@ -198,6 +204,7 @@ class SparkProcessPlugin(object):
         self.enhanced_flag = False
         self.include = set()
         self.exclude = set()
+        self.metric_address = ""
 
     def configure(self, config_map):
         """
@@ -262,34 +269,42 @@ class SparkProcessPlugin(object):
 
         metric_records = []
 
-        for key, (metric_type, metric_type_cat, metric_key) in metrics.SPARK_PROCESS_METRICS.items():
+        # get the prefix. I can also get the app name from  api/v1/applications TODO
+        # we probably need to add the app name as dimension here
+        prefix = ""
+        entry = list(resp["gauges"].keys())[0]
+        if entry.find('.driver.')+8 > 0:
+            prefix = entry[0:entry.find('.driver.')+8]
 
+        for key, (metric_type, metric_type_cat, metric_key) in metrics.SPARK_PROCESS_METRICS.items():
+  
             data = resp[metric_type_cat]
-            if key not in data:
+            if prefix+key not in data:
                 continue
 
             metric_name = key
-            metric_value = data[key][metric_key]
+            metric_value = data[prefix+key][metric_key]
 
             metric_records.append(MetricRecord(metric_name, metric_type, metric_value, dim))
 
         if not self.enhanced_flag and len(self.include) == 0:
             return metric_records
-
-        for key, (metric_type, metric_type_cat, metric_key) in metrics.SPARK_PROCESS_METRICS_ENHANCED.items():
-
-            data = resp[metric_type_cat]
-            if key not in data:
-                continue
-            if key in self.exclude:
-                continue
-            if len(self.include) > 0 and key not in self.include:
-                continue
-
-            metric_name = key
-            metric_value = data[key][metric_key]
-
-            metric_records.append(MetricRecord(metric_name, metric_type, metric_value, dim))
+        # If enhanced flag is enabled, push all gauges and counters metrics
+        enhanced_metrics = {"gauges": ("gauge", "value"), "counters": ("counter", "count")}
+        for metrics_type, (metric_type, metric_val_type) in enhanced_metrics.items():
+            metrics_dict = resp[metrics_type]
+            for key, val in metrics_dict.items():
+                metric_name = _remove_prefix(key, prefix)
+                # Don't resend metrics we already sent by default
+                if metric_name in metrics.SPARK_PROCESS_METRICS.keys():
+                    continue
+                if metric_name in self.exclude:
+                    continue
+                if len(self.include) > 0 and metric_name not in self.include:
+                    continue
+                
+                metric_value = metrics_dict[key][metric_val_type]
+                metric_records.append(MetricRecord(metric_name, metric_type, metric_value, dim))
 
         return metric_records
 
@@ -297,7 +312,7 @@ class SparkProcessPlugin(object):
         """
         Makes API calls for cluster level metrics
         related to master and worker nodes
-        and posts them to SignalFx
+        and posts them to SignalFx 
         """
         if self.master_port:
             master = self.metric_address + ":" + self.master_port
@@ -335,6 +350,9 @@ class SparkApplicationPlugin(object):
         self.enhanced_flag = False
         self.include = set()
         self.exclude = set()
+        self.current_utc = datetime.datetime.utcnow()
+        self.metric_address = ""
+        self.worker_port = ""
 
     def configure(self, config_map):
         """
@@ -345,7 +363,7 @@ class SparkApplicationPlugin(object):
         """
         collectd.info("Configuring Spark Application Plugin ...")
 
-        required_keys = ("Cluster", "Master")
+        required_keys = ("Cluster",)
 
         for key in required_keys:
             if key not in config_map:
@@ -375,7 +393,16 @@ class SparkApplicationPlugin(object):
                 _add_metrics_to_set(self.include, value)
             elif key == "ExcludeMetrics":
                 _add_metrics_to_set(self.exclude, value)
+            elif key == METRIC_ADDRESS:
+                if not _validate_url(value):
+                    raise ValueError("URL is not prefixed with http://")
+                self.metric_address = value
+            elif key == "WorkerPorts":
+                # SA only allow to pass down a single port
+                for port in value:
+                    self.worker_port = str(int(port))
 
+        self.current_utc = self.current_utc.replace(tzinfo=datetime.timezone.utc)
         collectd.info("Successfully configured Spark Application Plugin")
 
     def read(self):
@@ -441,6 +468,24 @@ class SparkApplicationPlugin(object):
             self.metrics[(app_name, app_user)] = {}
         return apps
 
+    def _get_driver_apps(self):
+        """
+        Retrieve all applications from driver; used for DataBricks deployment
+        """
+        resp = self.spark_agent.request_metrics(self.metric_address + ":" + self.worker_port, APPS_ENDPOINT)
+        apps = {}
+
+        for app in resp:
+            app_id = app.get("id")
+            app_name = app.get("name")
+            # not sure if this is the right sure, need more infor about attempt
+            app_user = app.get("attempts")[0].get("sparkUser")
+
+            if app_id and app_name and app_user:
+                apps[app_id] = (app_name, app_user, self.metric_address + ":" + self.worker_port)
+                self.metrics[(app_name, app_user)] = {}
+        return apps
+
     def _get_mesos_apps(self):
         """
         Retrieve all applications corresponding to Spark mesos cluster
@@ -490,7 +535,8 @@ class SparkApplicationPlugin(object):
             collectd.info("Cluster mode not defined")
             return []
         if self.cluster_mode == SPARK_STANDALONE_MODE:
-            return self._get_standalone_apps()
+            # a hack until we add driver as a cluster type in SA
+            return self._get_driver_apps()
         elif self.cluster_mode == SPARK_MESOS_MODE:
             return self._get_mesos_apps()
         elif self.cluster_mode == SPARK_YARN_MODE:
@@ -533,7 +579,9 @@ class SparkApplicationPlugin(object):
                      and url endpoint for API call
         """
         for app_id, (app_name, app_user, tracking_url) in apps.items():
-            resp = self.spark_agent.request_metrics(tracking_url, APPS_ENDPOINT, app_id, "jobs", status="RUNNING")
+            # for Databricks, the filtering by status is broken, we can't just report running jobs
+            # we'll report all job submitted in the last hour
+            resp = self.spark_agent.request_metrics(tracking_url, APPS_ENDPOINT, app_id, "jobs")
             if not resp:
                 continue
 
@@ -542,13 +590,19 @@ class SparkApplicationPlugin(object):
 
             job_metrics = self.metrics[(app_name, app_user)]
             if len(resp):
+                # change the metric name as running status is not being fetched
                 job_metrics["spark.num_running_jobs"] = MetricRecord("spark.num_running_jobs", "gauge", len(resp), dim)
 
             for job in resp:
+                job_time = datetime.datetime.strptime(job.get("submissionTime"),'%Y-%m-%dT%H:%M:%S.%fGMT')
+                job_time = job_time.replace(tzinfo=datetime.timezone.utc)
+                if (self.current_utc - job_time).total_seconds() / 3600 > 1:
+                    break
                 for key, (metric_type, metric_name) in metrics.SPARK_JOB_METRICS.items():
 
                     if key not in job:
                         continue
+
                     metric_value = job[key]
 
                     mr = job_metrics.get(key, MetricRecord(metric_name, metric_type, 0, dim))
@@ -563,8 +617,10 @@ class SparkApplicationPlugin(object):
         apps (dict): Mapping of application id to app name, user,
                      and url endpoint for API call
         """
+        # for Databricks, the filtering by status is broken, we can't just report on ACTIVE stages
+        # we'll report all stages submitted in the last hour
         for app_id, (app_name, app_user, tracking_url) in apps.items():
-            resp = self.spark_agent.request_metrics(tracking_url, APPS_ENDPOINT, app_id, "stages", status="ACTIVE")
+            resp = self.spark_agent.request_metrics(tracking_url, APPS_ENDPOINT, app_id, "stages")
             if not resp:
                 continue
 
@@ -578,6 +634,10 @@ class SparkApplicationPlugin(object):
                 )
 
             for stage in resp:
+                stage_time = datetime.datetime.strptime(stage.get("submissionTime"),'%Y-%m-%dT%H:%M:%S.%fGMT')
+                stage_time = stage_time.replace(tzinfo=datetime.timezone.utc)
+                if (self.current_utc - stage_time).total_seconds() / 3600 > 1:
+                    break
                 for key, (metric_type, metric_name) in metrics.SPARK_STAGE_METRICS.items():
 
                     if key not in stage:
@@ -588,7 +648,7 @@ class SparkApplicationPlugin(object):
                     mr = stage_metrics.get(key, MetricRecord(metric_name, metric_type, 0, dim))
                     mr.value += metric_value
                     stage_metrics[key] = mr
-
+            # this logic needs to be checked as we are no longer filtering by ACTIVE stages
             for key, mr in stage_metrics.items():
                 if key == "executorRunTime" and len(resp) > 0:
                     mr.value /= len(resp)
@@ -597,6 +657,10 @@ class SparkApplicationPlugin(object):
                 continue
 
             for stage in resp:
+                stage_time = datetime.datetime.strptime(stage.get("submissionTime"),'%Y-%m-%dT%H:%M:%S.%fGMT')
+                stage_time = stage_time.replace(tzinfo=datetime.timezone.utc)
+                if (self.current_utc - stage_time).total_seconds() / 3600 > 1:
+                    break
                 for key, (metric_type, metric_name) in metrics.SPARK_STAGE_METRICS_ENHANCED.items():
 
                     if key not in stage:
