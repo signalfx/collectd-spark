@@ -10,6 +10,7 @@ from six.moves import urllib
 from six.moves.urllib.parse import urljoin
 
 import metrics
+import logging
 
 PLUGIN_NAME = "apache_spark"
 APPS = "Applications"
@@ -73,7 +74,7 @@ def _dimensions_str_to_dict(dimensions_str):
         if _validate_kv(kv):
             dimensions[kv[0]] = kv[1]
         else:
-            collectd.info(
+            logging.info(
                 "Could not validate key-val in dimensions \
              from configuration file."
             )
@@ -121,6 +122,10 @@ class MetricSink(object):
         emit_value.values = [metric_record.value]
         emit_value.type = metric_record.type
         emit_value.type_instance = metric_record.name
+        logging.info("metric name")
+        logging.info(metric_record.name)
+        logging.info("metric value")
+        logging.info([metric_record.value])
         emit_value.plugin_instance = "[{0}]".format(self._format_dimensions(metric_record.dimensions))
 
         # With some versions of CollectD, a dummy metadata map must to be added
@@ -128,6 +133,8 @@ class MetricSink(object):
         # write_http plugin. See
         # https://github.com/collectd/collectd/issues/716
         emit_value.meta = {"true": "true"}
+        logging.info("emitting value to collectd")
+        logging.info(emit_value)
 
         emit_value.dispatch()
 
@@ -156,7 +163,7 @@ class SparkAgent(object):
         try:
             return json.load(resp)
         except ValueError as e:
-            collectd.info("Error parsing JSON from API call (%s) %s/%s" % (e, url, path))
+            logging.info("Error parsing JSON from API call (%s) %s/%s" % (e, url, path))
             return []
 
     def rest_request(self, url, path, *args, **kwargs):
@@ -172,15 +179,25 @@ class SparkAgent(object):
             query = "&".join(["{0}={1}".format(key, value) for key, value in kwargs.items()])
             url = urljoin(url, "?" + query)
 
+        logging.info("API call")
+        logging.info(url)
+
         try:
             req = urllib.request.Request(url)
+            req.add_header('Authorization', 'Bearer dapi81919c441945df1965e460de2a61cb5f-3')
             resp = urllib.request.urlopen(req)
+            logging.info(resp)
             return resp
         except (urllib.error.HTTPError, urllib.error.URLError) as e:
             if HTTP_404_ERROR not in str(e):
-                collectd.info("Unable to make request at (%s) %s" % (e, url))
+                logging.info(req)
+                logging.info(resp)
+                logging.info("Unable to make request at (%s) %s" % (e, url))
             return None
         except Exception:
+            logging.info(req)
+            logging.info(resp)
+            logging.info("not 404 Unable to make request at (%s) %s" % (e, url))
             return None
 
 
@@ -206,7 +223,7 @@ class SparkProcessPlugin(object):
         Args:
         config_map (dict): mapping of config name to value
         """
-        collectd.info("Configuring Spark Process Plugin ...")
+        logging.info("Configuring Spark Process Plugin ...")
 
         if "MasterPort" not in config_map and "WorkerPorts" not in config_map:
             raise ValueError(
@@ -221,10 +238,10 @@ class SparkProcessPlugin(object):
                     raise ValueError("URL is not prefixed with http://")
                 self.metric_address = value
             elif key == "MasterPort":
-                collectd.info("MasterPort detected")
+                logging.info("MasterPort detected")
                 self.master_port = str(int(value))
             elif key == "WorkerPorts":
-                collectd.info("WorkerPort(s) detected")
+                logging.info("WorkerPort(s) detected")
                 for port in value:
                     self.worker_ports.append(str(int(port)))
             elif key == "Dimensions" or key == "Dimension":
@@ -236,7 +253,7 @@ class SparkProcessPlugin(object):
             elif key == "ExcludeMetrics":
                 _add_metrics_to_set(self.exclude, value)
 
-        collectd.info("Successfully configured Spark Process Plugin ...")
+        logging.info("Successfully configured Spark Process Plugin ...")
 
     def get_metrics(self, resp, process, *args):
         """
@@ -299,18 +316,22 @@ class SparkProcessPlugin(object):
         related to master and worker nodes
         and posts them to SignalFx
         """
+
+        logging.info("setting master and work urls")
         if self.master_port:
-            master = self.metric_address + ":" + self.master_port
-            master_resp = self.spark_agent.request_metrics(master, MASTER_PATH)
-            master_metrics = self.get_metrics(master_resp, "master")
-            self.post_metrics(master_metrics)
+            #master = self.metric_address + ":" + self.master_port
+            master = "eastus-c3.azuredatabricks.net/driver-proxy-api/o/6396291084944509/1019-210414-87r9zt04/40001"
+            #master_resp = self.spark_agent.request_metrics(master, MASTER_PATH)
+            #master_metrics = self.get_metrics(master_resp, "master")
+            #self.post_metrics(master_metrics)
 
         if self.worker_ports:
             for worker_port in self.worker_ports:
-                worker = self.metric_address + ":" + worker_port
-                worker_resp = self.spark_agent.request_metrics(worker, WORKER_PATH)
-                worker_metrics = self.get_metrics(worker_resp, "worker", worker_port)
-                self.post_metrics(worker_metrics)
+                #worker = self.metric_address + ":" + worker_port
+                worker = "eastus-c3.azuredatabricks.net/driver-proxy-api/o/6396291084944509/1019-210414-87r9zt04/40001"
+                #worker_resp = self.spark_agent.request_metrics(worker, WORKER_PATH)
+                #worker_metrics = self.get_metrics(worker_resp, "worker", worker_port)
+                #self.post_metrics(worker_metrics)
 
     def post_metrics(self, metrics):
         """
@@ -343,45 +364,47 @@ class SparkApplicationPlugin(object):
         Args:
         config_map (dict): mapping of config name to value
         """
-        collectd.info("Configuring Spark Application Plugin ...")
+        logging.info("Configuring Spark Application Plugin ...")
 
         required_keys = ("Cluster", "Master")
 
-        for key in required_keys:
-            if key not in config_map:
-                raise ValueError("Missing required config setting: %s" % key)
+        # for key in required_keys:
+        #     if key not in config_map:
+        #         raise ValueError("Missing required config setting: %s" % key)
 
-        for key, value in config_map.items():
-            if key == "Cluster":
-                if not self._validate_cluster(value):
-                    raise ValueError(
-                        "Cluster value not: %s, %s, or %s", (SPARK_STANDALONE_MODE, SPARK_MESOS_MODE, SPARK_YARN_MODE)
-                    )
-                self.cluster_mode = value
-                self.global_dimensions["cluster"] = self.cluster_mode
-            elif key == "Master":
-                if not self._validate_master(value):
-                    raise ValueError(
-                        "Master not configured as \
-                                     (http://host:port)"
-                    )
-                self.master = value
-            elif key == "Dimensions" or key == "Dimension":
-                self.global_dimensions.update(_dimensions_str_to_dict(value))
+        # for key, value in config_map.items():
+        #     if key == "Cluster":
+        #         if not self._validate_cluster(value):
+        #             raise ValueError(
+        #                 "Cluster value not: %s, %s, or %s", (SPARK_STANDALONE_MODE, SPARK_MESOS_MODE, SPARK_YARN_MODE)
+        #             )
+        #         self.cluster_mode = value
+        #         self.global_dimensions["cluster"] = self.cluster_mode
+        #     elif key == "Master":
+        #         if not self._validate_master(value):
+        #             raise ValueError(
+        #                 "Master not configured as \
+        #                              (http://host:port)"
+        #             )
+        #         self.master = value
+        #     elif key == "Dimensions" or key == "Dimension":
+        #         self.global_dimensions.update(_dimensions_str_to_dict(value))
 
-            elif key == "EnhancedMetrics" and value == "True":
-                self.enhanced_flag = True
-            elif key == "IncludeMetrics":
-                _add_metrics_to_set(self.include, value)
-            elif key == "ExcludeMetrics":
-                _add_metrics_to_set(self.exclude, value)
+        #     elif key == "EnhancedMetrics" and value == "True":
+        #         self.enhanced_flag = True
+        #     elif key == "IncludeMetrics":
+        #         _add_metrics_to_set(self.include, value)
+        #     elif key == "ExcludeMetrics":
+        #         _add_metrics_to_set(self.exclude, value)
 
-        collectd.info("Successfully configured Spark Application Plugin")
+        logging.info("Successfully configured Spark Application Plugin")
 
     def read(self):
         """
         Collect metrics from Spark API endpoints and send to SignalFx
         """
+
+        logging.info("starting spark metric api calls")
 
         # Get all active apps in cluster
         apps = self._get_running_apps()
@@ -412,33 +435,56 @@ class SparkApplicationPlugin(object):
         application. The driver URL is the API endpoint required to
         retrieve any application level metrics
         """
+
+        logging.info("_get_standalone_apps")
+        self.master = "https://eastus-c3.azuredatabricks.net/driver-proxy-api/o/6396291084944509/1019-210414-87r9zt04/40001/"
+        tracking_url = self.master
+        STANDALONE_STATE_PATH = "api/v1/applications"
         resp = self.spark_agent.request_metrics(self.master, STANDALONE_STATE_PATH)
         apps = {}
         active_apps = {}
 
-        if "activeapps" in resp:
-            active_apps = resp["activeapps"]
+        logging.info(resp)
+        
+        #if "id" in resp:
+        #    active_apps = resp["id"]
 
-        for app in active_apps:
-            app_id = app.get("id")
-            app_name = app.get("name")
-            app_user = app.get("user")
+        for rec in resp:
+            print(rec["id"], rec["name"])
+            app_id = rec["id"]
+            app_name = rec["name"]
+            app_user = "root"
 
-            resp = self.spark_agent.rest_request(self.master, STANDALONE_APP_PATH, appId=app_id)
-            html = resp.read().decode("utf-8")
-            app_url_list = [match.start() for match in re.finditer("Application Detail UI", html)]
+        apps[app_id] = (app_name, app_user, tracking_url)
+        self.metrics[(app_name, app_user)] = {}
+            
+            #active_apps = resp["id"]
 
-            if not app_url_list or len(app_url_list) != 1:
-                continue
+        logging.info("active_apps")
+        logging.info(active_apps)
+        # for app in active_apps:
+        #     app_id = app.get("id")
+        #     app_name = app.get("name")
+        #     app_user = app.get("sparkUser")
+        #     logging.info(app_id)
+        #     logging.info(app_name)
+        #     logging.info(app_user)
 
-            end = app_url_list[0]
-            quote = html[end - 2]
-            start = html.rfind(quote, 0, end - 2)
-            if start == -1:
-                continue
-            tracking_url = html[start + 1 : end - 2]
-            apps[app_id] = (app_name, app_user, tracking_url)
-            self.metrics[(app_name, app_user)] = {}
+        #     resp = self.spark_agent.rest_request(self.master, STANDALONE_APP_PATH, appId=app_id)
+        #     html = resp.read().decode("utf-8")
+        #     app_url_list = [match.start() for match in re.finditer("Application Detail UI", html)]
+
+        #     if not app_url_list or len(app_url_list) != 1:
+        #         continue
+
+        #     end = app_url_list[0]
+        #     quote = html[end - 2]
+        #     start = html.rfind(quote, 0, end - 2)
+        #     if start == -1:
+        #         continue
+        #     tracking_url = html[start + 1 : end - 2]
+        #     apps[app_id] = (app_name, app_user, tracking_url)
+        #     self.metrics[(app_name, app_user)] = {}
         return apps
 
     def _get_mesos_apps(self):
@@ -486,15 +532,16 @@ class SparkApplicationPlugin(object):
         """
         Retrieve running applications in Spark based on cluster
         """
-        if not self.cluster_mode:
-            collectd.info("Cluster mode not defined")
-            return []
-        if self.cluster_mode == SPARK_STANDALONE_MODE:
-            return self._get_standalone_apps()
-        elif self.cluster_mode == SPARK_MESOS_MODE:
-            return self._get_mesos_apps()
-        elif self.cluster_mode == SPARK_YARN_MODE:
-            return self._get_yarn_apps()
+        # self.cluster_mode = "SPARK_STANDALONE_MODE"
+        # if not self.cluster_mode:
+        #     logging.info("Cluster mode not defined")
+        #     return []
+        # if self.cluster_mode == SPARK_STANDALONE_MODE:
+        return self._get_standalone_apps()
+        # elif self.cluster_mode == SPARK_MESOS_MODE:
+        #     return self._get_mesos_apps()
+        # elif self.cluster_mode == SPARK_YARN_MODE:
+        #     return self._get_yarn_apps()
 
     def _get_streaming_metrics(self, apps):
         """
@@ -725,8 +772,11 @@ class SparkApplicationPlugin(object):
         """
         Post app metrics to collectd
         """
+
+        logging.info("posting metrics to collectd")
         for (app_name, user) in self.metrics:
             app_metrics = self.metrics[(app_name, user)]
+            logging.info(app_metrics)
             for metric_name, mr in app_metrics.items():
                 self.metric_sink.emit(mr)
 
@@ -767,7 +817,7 @@ class SparkPluginManager(object):
         self.count = 1
 
     def configure(self, conf):
-        collectd.info("Configuring plugins via Spark Plugin Manager")
+        logging.info("Configuring plugins via Spark Plugin Manager")
 
         config_map = dict(
             [(c.key, c.values[0]) if c.key != "WorkerPorts" else (c.key, c.values) for c in conf.children]
@@ -778,8 +828,7 @@ class SparkPluginManager(object):
         if METRIC_ADDRESS in config_map:
             sp_plugin = SparkProcessPlugin()
             sp_plugin.configure(config_map)
-
-        if APPS in config_map and config_map[APPS] == "True":
+        #if APPS in config_map and config_map[APPS] == "True":
             sa_plugin = SparkApplicationPlugin()
             sa_plugin.configure(config_map)
 
@@ -790,7 +839,7 @@ class SparkPluginManager(object):
             plugins.append(sa_plugin)
 
         if not plugins:
-            collectd.info("Not enough parameters supplied to config file")
+            logging.info("Not enough parameters supplied to config file")
             return
         collectd.register_read(self.read, interval=DEFAULT_INTERVAL, data=plugins, name="instance" + str(self.count))
         self.count += 1
