@@ -38,7 +38,7 @@ YARN_MASTER_APP_PATH = "/ws/v1/cluster/apps"
 # Error match
 HTTP_404_ERROR = "Error 404"
 
-pipelineArr = []
+pipeline_dict = {}
 
 def _validate_url(url):
     return url.startswith("http://")
@@ -412,19 +412,20 @@ class SparkApplicationPlugin(object):
 
         logging.info("starting spark metric api calls")
 
-        pipelineResult_arr = self.getPipelines()
+        pipelineResult_dict = self.getPipelines()
 
-        for pipelineIdVal in pipelineResult_arr:
-            logging.info("pipeline id: " + pipelineIdVal)
+        for pipeline_id, pipeline_name in pipelineResult_dict.items():
+            logging.info("pipeline id: " + pipeline_id)
+            logging.info("pipeline name: " + pipeline_name)
             
-            cluster_id = self.getPipelineClusterId(pipelineIdVal)
+            cluster_id, update_arr = self.getPipelineClusterId(pipeline_id)
 
-            if cluster_id:
+            if cluster_id != "none":
                 # Get all active apps in cluster
-                apps = self._get_running_apps(cluster_id)
+                apps = self._get_running_apps(pipeline_id, pipeline_name, cluster_id, update_arr)
 
                 # Get streaming metrics
-                self._get_streaming_metrics(apps)
+                #self._get_streaming_metrics(apps)
 
                 # Get the job metrics
                 self._get_job_metrics(apps)
@@ -447,19 +448,32 @@ class SparkApplicationPlugin(object):
         json_response = json.load(response)
 
         for _pipeline in json_response["statuses"]: 
-            pipelineArr.append(_pipeline['pipeline_id'])
-        return pipelineArr
+            pipeline_dict[_pipeline['pipeline_id']] = _pipeline['name']
+        return pipeline_dict
 
     #Fetch all detail for specific pipeline
     def getPipelineClusterId(self, pipeline_id):
+        update_id_arr = []
         response = self.rest_request("https://adb-6396291084944509.9.azuredatabricks.net/","api/2.0/pipelines/" + pipeline_id)
         
         json_response = json.load(response)
+        logging.info(json_response)
         
         if "cluster_id" in json_response:
-            return json_response['cluster_id']
+            #also fetch any update_id with state != COMPLETED, FAILED, or CANCELED
+            for update in json_response['latest_updates']:
+                logging.info("get update_id")
+                #logging.info("update_ids: " + update)
+                logging.info(update['update_id'])
+                logging.info(update['state'])
+
+                if update['state'] not in ('COMPLETED', 'FAILED', 'CANCELED'):
+                    update_id_arr.append(update['update_id'])
+
+            return json_response['cluster_id'], update_id_arr
         else:
-            print("Key doesn't exist in JSON data")
+            print("Cluster ID is not available")
+            return "none", "none"
 
     def rest_request(self, url, path, *args, **kwargs):
         """
@@ -495,7 +509,7 @@ class SparkApplicationPlugin(object):
             logging.info("not 404 Unable to make request at (%s) %s" % (e, url))
             return None
 
-    def _get_standalone_apps(self, cluster_id):
+    def _get_standalone_apps(self, pipeline_id, pipeline_name, cluster_id, update_id_array):
         """
         Retrieve active applications for Spark standalone cluster
 
@@ -523,13 +537,12 @@ class SparkApplicationPlugin(object):
             app_name = rec["name"]
             app_user = "root"
 
-        apps[app_id] = (app_name, app_user, tracking_url)
+        logging.info("pipeline_id2: " + pipeline_id)
+        logging.info("pipeline_name2: " + pipeline_name)
+        apps[app_id] = (app_name, app_user, tracking_url, pipeline_id, pipeline_name, cluster_id, update_id_array)
         self.metrics[(app_name, app_user)] = {}
             
             #active_apps = resp["id"]
-
-        logging.info("active_apps")
-        logging.info(active_apps)
         # for app in active_apps:
         #     app_id = app.get("id")
         #     app_name = app.get("name")
@@ -596,7 +609,7 @@ class SparkApplicationPlugin(object):
                     self.metrics[(app_name, app_user)] = {}
         return apps
 
-    def _get_running_apps(self, cluster_id):
+    def _get_running_apps(self, pipeline_id, pipeline_name, cluster_id, update_id_array):
         """
         Retrieve running applications in Spark based on cluster
         """
@@ -605,7 +618,7 @@ class SparkApplicationPlugin(object):
         #     logging.info("Cluster mode not defined")
         #     return []
         # if self.cluster_mode == SPARK_STANDALONE_MODE:
-        return self._get_standalone_apps(cluster_id)
+        return self._get_standalone_apps(pipeline_id, pipeline_name, cluster_id, update_id_array)
         # elif self.cluster_mode == SPARK_MESOS_MODE:
         #     return self._get_mesos_apps()
         # elif self.cluster_mode == SPARK_YARN_MODE:
@@ -620,17 +633,33 @@ class SparkApplicationPlugin(object):
                      and url endpoint for API call
         """
 
-        logging.info("inside streaming metrics")
+        logging.info("no more streaming metrics")
+        logging.info("testing")
+
         for app_id, (app_name, app_user, tracking_url) in apps.items():
+            logging.info("app_id: " + app_id)
+            logging.info("app_name: " + app_name)
+            logging.info("app_user: " + app_user)
+            logging.info("tracking_url: " + tracking_url)
+            logging.info("APPS_ENDPOINT: " + APPS_ENDPOINT)
+
             resp = self.spark_agent.request_metrics(tracking_url, APPS_ENDPOINT, app_id, "streaming/statistics")
+            #json_response = json.load(resp)
+            #logging.info("Any response?: " + json_response)
+
+            logging.info("continue?")
             if not resp:
                 continue
+
+            logging.info("did it?")
             
-            logging.info("api response: " + resp)
             dim = {"app_name": str(app_name), "user": str(app_user)}
             dim.update(self.global_dimensions)
 
+            logging.info("before")
             stream_stat_metrics = self.metrics[(app_name, app_user)]
+
+            logging.info("after")
 
             for key, (metric_type, metric_name) in metrics.SPARK_STREAMING_METRICS.items():
                 logging.info("key: " + key)
@@ -653,13 +682,23 @@ class SparkApplicationPlugin(object):
         apps (dict): Mapping of application id to app name, user,
                      and url endpoint for API call
         """
-        for app_id, (app_name, app_user, tracking_url) in apps.items():
+
+        logging.info("Printing array")
+
+        for app_id, (app_name, app_user, tracking_url, pipeline_id, pipeline_name, cluster_id, update_id_array) in apps.items():
             resp = self.spark_agent.request_metrics(tracking_url, APPS_ENDPOINT, app_id, "jobs", status="RUNNING")
+
+            logging.info("job metrics response")
+            logging.info(resp)
+
             if not resp:
                 continue
 
-            dim = {"app_name": str(app_name), "user": str(app_user)}
+            dim = {"pipeline_name": str(pipeline_name), "update_id": str(update_id_array), "app_id": str(app_id), "cluster_id": str(cluster_id), "pipeline_id": str(pipeline_id)}
             dim.update(self.global_dimensions)
+
+            logging.info("creating dimension")
+            logging.info(dim)
 
             job_metrics = self.metrics[(app_name, app_user)]
             if len(resp):
@@ -684,12 +723,12 @@ class SparkApplicationPlugin(object):
         apps (dict): Mapping of application id to app name, user,
                      and url endpoint for API call
         """
-        for app_id, (app_name, app_user, tracking_url) in apps.items():
+        for app_id, (app_name, app_user, tracking_url, pipeline_id, pipeline_name, cluster_id, update_id_array) in apps.items():
             resp = self.spark_agent.request_metrics(tracking_url, APPS_ENDPOINT, app_id, "stages", status="ACTIVE")
             if not resp:
                 continue
 
-            dim = {"app_name": str(app_name), "user": str(app_user)}
+            dim = {"pipeline_name": str(pipeline_name), "update_id": str(update_id_array), "app_id": str(app_id), "cluster_id": str(cluster_id), "pipeline_id": str(pipeline_id)}
             dim.update(self.global_dimensions)
 
             stage_metrics = self.metrics[(app_name, app_user)]
@@ -817,13 +856,16 @@ class SparkApplicationPlugin(object):
         apps (dict): Mapping of application id to app name, user,
                      and url endpoint for API call
         """
-        for app_id, (app_name, app_user, tracking_url) in apps.items():
+        for app_id, (app_name, app_user, tracking_url, pipeline_id, pipeline_name, cluster_id, update_id_array) in apps.items():
             resp = self.spark_agent.request_metrics(tracking_url, APPS_ENDPOINT, app_id, "executors")
             if not resp:
                 continue
 
-            dim = {"app_name": str(app_name), "user": str(app_user)}
-            dim.update(self.global_dimensions)
+            logging.info("exec metrics app_id: " + app_id)
+            logging.info("exec metrics cluster_id: " + cluster_id)
+            
+            dim = {"cluster_id": str(cluster_id), "pipeline_id": str(pipeline_id), "pipeline_name": str(pipeline_name), "update_id": str(update_id_array), "app_id": str(app_id)}
+            #dim.update(self.global_dimensions)
 
             exec_metrics = self.metrics[(app_name, app_user)]
 
