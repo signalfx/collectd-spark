@@ -26,7 +26,7 @@ SPARK_YARN_MODE = "Yarn"
 
 # URL paths
 APPS_ENDPOINT = "api/v1/applications"
-MASTER_PATH = "metrics/master/json/"
+MASTER_PATH = "metrics/json/"
 WORKER_PATH = "metrics/json/"
 
 STANDALONE_STATE_PATH = "/json/"
@@ -38,6 +38,7 @@ YARN_MASTER_APP_PATH = "/ws/v1/cluster/apps"
 # Error match
 HTTP_404_ERROR = "Error 404"
 
+pipelineArr = []
 
 def _validate_url(url):
     return url.startswith("http://")
@@ -320,18 +321,23 @@ class SparkProcessPlugin(object):
         logging.info("setting master and work urls")
         if self.master_port:
             #master = self.metric_address + ":" + self.master_port
-            master = "eastus-c3.azuredatabricks.net/driver-proxy-api/o/6396291084944509/1019-210414-87r9zt04/40001"
-            #master_resp = self.spark_agent.request_metrics(master, MASTER_PATH)
-            #master_metrics = self.get_metrics(master_resp, "master")
-            #self.post_metrics(master_metrics)
+            master = "https://eastus-c3.azuredatabricks.net/driver-proxy-api/o/6396291084944509/1019-210414-87r9zt04/40001"
+            # master_resp = self.spark_agent.request_metrics(master, MASTER_PATH)
+            # logging.info("master cluster metrics")
+            # logging.info(master_resp)
+            # master_metrics = self.get_metrics(master_resp, "master")
+            # self.post_metrics(master_metrics)
 
         if self.worker_ports:
             for worker_port in self.worker_ports:
                 #worker = self.metric_address + ":" + worker_port
-                worker = "eastus-c3.azuredatabricks.net/driver-proxy-api/o/6396291084944509/1019-210414-87r9zt04/40001"
-                #worker_resp = self.spark_agent.request_metrics(worker, WORKER_PATH)
-                #worker_metrics = self.get_metrics(worker_resp, "worker", worker_port)
-                #self.post_metrics(worker_metrics)
+                worker = "https://eastus-c3.azuredatabricks.net/driver-proxy-api/o/6396291084944509/1019-210414-87r9zt04/40001"
+                # worker_resp = self.spark_agent.request_metrics(worker, WORKER_PATH)
+                # logging.info("HERE worker cluster metrics")
+                # logging.info(worker_resp)
+                # worker_metrics = self.get_metrics(worker_resp, "worker", worker_port)
+                # logging.info(worker_metrics)
+                # self.post_metrics(worker_metrics)
 
     def post_metrics(self, metrics):
         """
@@ -406,28 +412,90 @@ class SparkApplicationPlugin(object):
 
         logging.info("starting spark metric api calls")
 
-        # Get all active apps in cluster
-        apps = self._get_running_apps()
+        pipelineResult_arr = self.getPipelines()
 
-        # Get streaming metrics
-        self._get_streaming_metrics(apps)
+        for pipelineIdVal in pipelineResult_arr:
+            logging.info("pipeline id: " + pipelineIdVal)
+            
+            cluster_id = self.getPipelineClusterId(pipelineIdVal)
 
-        # Get the job metrics
-        self._get_job_metrics(apps)
+            if cluster_id:
+                # Get all active apps in cluster
+                apps = self._get_running_apps(cluster_id)
 
-        # Get the stage metrics
-        self._get_stage_metrics(apps)
+                # Get streaming metrics
+                self._get_streaming_metrics(apps)
 
-        # Get the executor metrics
-        self._get_executor_metrics(apps)
+                # Get the job metrics
+                self._get_job_metrics(apps)
 
-        # Send metrics to SignalFx
-        self.post_metrics()
+                # Get the stage metrics
+                self._get_stage_metrics(apps)
 
-        # clear metrics data structure
-        self.cleanup()
+                # Get the executor metrics
+                self._get_executor_metrics(apps)
 
-    def _get_standalone_apps(self):
+                # Send metrics to SignalFx
+                self.post_metrics()
+
+                # clear metrics data structure
+                self.cleanup()
+
+    #Fetch all pipelines for specific instance
+    def getPipelines(self):
+        response = self.rest_request("https://adb-6396291084944509.9.azuredatabricks.net/", "api/2.0/pipelines")
+        json_response = json.load(response)
+
+        for _pipeline in json_response["statuses"]: 
+            pipelineArr.append(_pipeline['pipeline_id'])
+        return pipelineArr
+
+    #Fetch all detail for specific pipeline
+    def getPipelineClusterId(self, pipeline_id):
+        response = self.rest_request("https://adb-6396291084944509.9.azuredatabricks.net/","api/2.0/pipelines/" + pipeline_id)
+        
+        json_response = json.load(response)
+        
+        if "cluster_id" in json_response:
+            return json_response['cluster_id']
+        else:
+            print("Key doesn't exist in JSON data")
+
+    def rest_request(self, url, path, *args, **kwargs):
+        """
+        Makes REST call to Spark API endpoint
+        """
+        url = url.rstrip("/") + "/" + path.lstrip("/")
+        if args:
+            for arg in args:
+                url = url.rstrip("/") + "/" + arg.lstrip("/")
+
+        if kwargs:
+            query = "&".join(["{0}={1}".format(key, value) for key, value in kwargs.items()])
+            url = urljoin(url, "?" + query)
+
+        logging.info("API call")
+        logging.info(url)
+
+        try:
+            req = urllib.request.Request(url)
+            req.add_header('Authorization', 'Bearer dapi81919c441945df1965e460de2a61cb5f-3')
+            resp = urllib.request.urlopen(req)
+            logging.info(resp)
+            return resp
+        except (urllib.error.HTTPError, urllib.error.URLError) as e:
+            if HTTP_404_ERROR not in str(e):
+                logging.info(req)
+                logging.info(resp)
+                logging.info("Unable to make request at (%s) %s" % (e, url))
+            return None
+        except Exception:
+            logging.info(req)
+            logging.info(resp)
+            logging.info("not 404 Unable to make request at (%s) %s" % (e, url))
+            return None
+
+    def _get_standalone_apps(self, cluster_id):
         """
         Retrieve active applications for Spark standalone cluster
 
@@ -437,7 +505,7 @@ class SparkApplicationPlugin(object):
         """
 
         logging.info("_get_standalone_apps")
-        self.master = "https://eastus-c3.azuredatabricks.net/driver-proxy-api/o/6396291084944509/1019-210414-87r9zt04/40001/"
+        self.master = "https://eastus-c3.azuredatabricks.net/driver-proxy-api/o/6396291084944509/" + cluster_id + "/40001/"
         tracking_url = self.master
         STANDALONE_STATE_PATH = "api/v1/applications"
         resp = self.spark_agent.request_metrics(self.master, STANDALONE_STATE_PATH)
@@ -528,7 +596,7 @@ class SparkApplicationPlugin(object):
                     self.metrics[(app_name, app_user)] = {}
         return apps
 
-    def _get_running_apps(self):
+    def _get_running_apps(self, cluster_id):
         """
         Retrieve running applications in Spark based on cluster
         """
@@ -537,7 +605,7 @@ class SparkApplicationPlugin(object):
         #     logging.info("Cluster mode not defined")
         #     return []
         # if self.cluster_mode == SPARK_STANDALONE_MODE:
-        return self._get_standalone_apps()
+        return self._get_standalone_apps(cluster_id)
         # elif self.cluster_mode == SPARK_MESOS_MODE:
         #     return self._get_mesos_apps()
         # elif self.cluster_mode == SPARK_YARN_MODE:
@@ -551,17 +619,23 @@ class SparkApplicationPlugin(object):
         apps (dict): Mapping of application id to app name, user,
                      and url endpoint for API call
         """
+
+        logging.info("inside streaming metrics")
         for app_id, (app_name, app_user, tracking_url) in apps.items():
             resp = self.spark_agent.request_metrics(tracking_url, APPS_ENDPOINT, app_id, "streaming/statistics")
             if not resp:
                 continue
-
+            
+            logging.info("api response: " + resp)
             dim = {"app_name": str(app_name), "user": str(app_user)}
             dim.update(self.global_dimensions)
 
             stream_stat_metrics = self.metrics[(app_name, app_user)]
 
             for key, (metric_type, metric_name) in metrics.SPARK_STREAMING_METRICS.items():
+                logging.info("key: " + key)
+                logging.info("metric_type: " + metric_type)
+                logging.info("metric_name: " + metric_name)
 
                 if key not in resp:
                     continue
