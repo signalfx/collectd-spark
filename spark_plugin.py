@@ -796,6 +796,8 @@ class SparkPluginManager(object):
         self.count += 1
 
     def read(self, plugin_list):
+        import sdb
+        sdb.Sdb(notify_host='0.0.0.0').set_trace()
         for plugin in plugin_list:
             plugin.read()
 
